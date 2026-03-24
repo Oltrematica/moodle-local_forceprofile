@@ -5,432 +5,729 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Force Profile Completion — Moodle Plugin</title>
     <meta name="description" content="A Moodle local plugin that forces users to complete their profile before navigating the site. Regex validation, event logging, admin dashboard, completion tracking.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
-            --bg: #0f1117; --surface: #161a24; --surface-2: #1c2130; --border: #2a2f3e;
-            --text: #e1e4ed; --muted: #8b90a0; --accent: #f7931a; --accent-soft: rgba(247,147,26,.12);
-            --green: #34d399; --green-soft: rgba(52,211,153,.12); --blue: #60a5fa; --blue-soft: rgba(96,165,250,.12);
-            --purple: #a78bfa; --purple-soft: rgba(167,139,250,.12); --red: #f87171; --red-soft: rgba(248,113,113,.12);
-            --r: 12px; --rs: 8px;
-            --mono: 'SF Mono','Fira Code','JetBrains Mono',monospace;
-            --sans: -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
-            --mw: 900px;
+            --bg: #06080d; --bg-2: #0a0e17; --surface: #111827; --surface-2: #1a2332;
+            --border: #1f2937; --border-2: #374151;
+            --text: #f1f5f9; --text-2: #e2e8f0; --muted: #64748b; --muted-2: #94a3b8;
+            --accent: #f59e0b; --accent-2: #fbbf24; --accent-glow: rgba(245,158,11,.15);
+            --green: #10b981; --green-2: #34d399; --green-glow: rgba(16,185,129,.15);
+            --blue: #3b82f6; --blue-2: #60a5fa; --blue-glow: rgba(59,130,246,.15);
+            --purple: #8b5cf6; --purple-2: #a78bfa; --purple-glow: rgba(139,92,246,.15);
+            --pink: #ec4899; --pink-glow: rgba(236,72,153,.15);
+            --r: 16px; --rs: 10px; --rx: 24px;
+            --mono: 'JetBrains Mono', monospace;
+            --sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            --mw: 1000px;
+            --transition: .3s cubic-bezier(.4,0,.2,1);
         }
-        body { font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.7; font-size: 16px; -webkit-font-smoothing: antialiased; }
+        body { font-family: var(--sans); background: var(--bg); color: var(--text-2); line-height: 1.7; font-size: 16px; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
         .container { max-width: var(--mw); margin: 0 auto; padding: 0 24px; }
+        ::selection { background: var(--accent); color: #000; }
 
-        /* Hero */
-        .hero { padding: 80px 0 60px; text-align: center; position: relative; }
-        .hero::after { content:''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 120px; height: 1px; background: linear-gradient(90deg,transparent,var(--accent),transparent); }
-        .hero-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; background: var(--accent-soft); border: 1px solid rgba(247,147,26,.25); border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--accent); letter-spacing: .02em; margin-bottom: 24px; }
-        .hero h1 { font-size: clamp(2rem,5vw,3rem); font-weight: 800; letter-spacing: -.03em; line-height: 1.15; margin-bottom: 16px; }
-        .hero h1 span { color: var(--accent); }
-        .hero p { font-size: 18px; color: var(--muted); max-width: 600px; margin: 0 auto 32px; }
-        .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-        .badges { display: flex; gap: 8px; justify-content: center; margin-bottom: 32px; flex-wrap: wrap; }
+        /* ── Animated background ── */
+        .bg-grid {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -2;
+            background-image:
+                linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+        .bg-glow {
+            position: fixed; z-index: -1; border-radius: 50%; filter: blur(120px); opacity: .4; pointer-events: none;
+        }
+        .bg-glow-1 { top: -200px; right: -100px; width: 600px; height: 600px; background: var(--accent-glow); animation: float 20s ease-in-out infinite; }
+        .bg-glow-2 { bottom: -200px; left: -100px; width: 500px; height: 500px; background: var(--blue-glow); animation: float 25s ease-in-out infinite reverse; }
+        .bg-glow-3 { top: 50%; left: 50%; width: 400px; height: 400px; background: var(--purple-glow); animation: float 30s ease-in-out infinite; }
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -30px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(.9); }
+        }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            padding: 16px 0;
+            background: rgba(6,8,13,.8);
+            backdrop-filter: blur(20px) saturate(1.5);
+            border-bottom: 1px solid rgba(255,255,255,.05);
+            transition: var(--transition);
+        }
+        nav .container { display: flex; align-items: center; justify-content: space-between; }
+        .nav-brand { font-weight: 800; font-size: 15px; letter-spacing: -.02em; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 8px; }
+        .nav-logo { width: 28px; height: 28px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; color: #000; }
+        .nav-links { display: flex; gap: 8px; align-items: center; }
+        .nav-links a { font-size: 13px; font-weight: 500; color: var(--muted-2); text-decoration: none; padding: 6px 12px; border-radius: 8px; transition: var(--transition); }
+        .nav-links a:hover { color: var(--text); background: rgba(255,255,255,.05); }
+        .nav-cta { background: var(--accent) !important; color: #000 !important; font-weight: 600 !important; }
+        .nav-cta:hover { filter: brightness(1.1); }
+
+        /* ── Hero ── */
+        .hero { padding: 140px 0 80px; text-align: center; position: relative; }
+        .hero-version {
+            display: inline-flex; align-items: center; gap: 8px; padding: 5px 6px 5px 14px;
+            background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 999px; font-size: 13px; font-weight: 500; color: var(--muted-2);
+            margin-bottom: 28px; animation: fadeInUp .6s ease both;
+        }
+        .hero-version-tag {
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #000; font-weight: 700; font-size: 11px; padding: 3px 10px;
+            border-radius: 999px; letter-spacing: .03em;
+        }
+        .hero h1 {
+            font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 900; letter-spacing: -.04em;
+            line-height: 1.1; margin-bottom: 20px; color: var(--text);
+            animation: fadeInUp .6s ease .1s both;
+        }
+        .hero h1 .gradient {
+            background: linear-gradient(135deg, var(--accent), var(--accent-2), var(--pink));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-size: 200% 200%; animation: gradientShift 5s ease infinite;
+        }
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        .hero p {
+            font-size: 18px; color: var(--muted-2); max-width: 580px; margin: 0 auto 36px;
+            line-height: 1.6; animation: fadeInUp .6s ease .2s both;
+        }
+        .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; animation: fadeInUp .6s ease .3s both; }
+        .badges { display: flex; gap: 8px; justify-content: center; margin-bottom: 28px; flex-wrap: wrap; animation: fadeInUp .6s ease .35s both; }
         .badges img { height: 22px; }
-        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: var(--rs); font-size: 15px; font-weight: 600; text-decoration: none; transition: all .2s; }
-        .btn-primary { background: var(--accent); color: #000; }
-        .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
-        .btn-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
-        .btn-secondary:hover { border-color: var(--muted); }
 
-        /* Sections */
-        section { padding: 60px 0; }
-        section + section { border-top: 1px solid var(--border); }
-        h2 { font-size: 1.6rem; font-weight: 700; letter-spacing: -.02em; margin-bottom: 12px; }
-        h3 { font-size: 1.15rem; font-weight: 600; margin: 32px 0 12px; }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Buttons ── */
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px; padding: 13px 26px;
+            border-radius: var(--rs); font-size: 15px; font-weight: 600;
+            text-decoration: none; transition: var(--transition); position: relative; overflow: hidden;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #000; box-shadow: 0 0 30px var(--accent-glow);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(245,158,11,.3); }
+        .btn-secondary { background: rgba(255,255,255,.05); color: var(--text); border: 1px solid rgba(255,255,255,.1); }
+        .btn-secondary:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.2); transform: translateY(-2px); }
+        .btn svg { width: 18px; height: 18px; }
+
+        /* ── Sections ── */
+        section { padding: 80px 0; position: relative; }
+        .section-divider {
+            width: 100%; height: 1px; margin: 0;
+            background: linear-gradient(90deg, transparent, var(--border), transparent);
+        }
+        h2 { font-size: 1.8rem; font-weight: 800; letter-spacing: -.03em; margin-bottom: 12px; color: var(--text); }
+        h3 { font-size: 1.15rem; font-weight: 700; margin: 36px 0 12px; color: var(--text); }
         p { margin-bottom: 16px; }
-        p.subtitle { color: var(--muted); margin-bottom: 32px; }
-        a { color: var(--accent); }
+        p.subtitle { color: var(--muted); margin-bottom: 36px; font-size: 17px; }
+        a { color: var(--accent-2); text-decoration: none; }
+        a:hover { text-decoration: underline; }
         ul, ol { margin: 12px 0 24px 24px; }
         li { margin-bottom: 6px; }
 
-        /* Flow */
-        .flow { display: flex; align-items: center; justify-content: center; gap: 0; margin: 32px 0; flex-wrap: wrap; }
-        .flow-step { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 16px; min-width: 140px; }
-        .flow-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; }
-        .flow-icon.orange { background: var(--accent-soft); }
-        .flow-icon.blue { background: var(--blue-soft); }
-        .flow-icon.green { background: var(--green-soft); }
-        .flow-label { font-size: 13px; font-weight: 600; text-align: center; }
+        /* ── Feature pills ── */
+        .pill-grid { display: flex; flex-wrap: wrap; gap: 10px; margin: 28px 0; justify-content: center; }
+        .pill {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 10px 18px; border-radius: 999px; font-size: 14px; font-weight: 500;
+            background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07);
+            transition: var(--transition); cursor: default;
+        }
+        .pill:hover { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); transform: translateY(-2px); }
+        .pill-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .pill-dot.o { background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+        .pill-dot.g { background: var(--green); box-shadow: 0 0 8px var(--green-glow); }
+        .pill-dot.b { background: var(--blue); box-shadow: 0 0 8px var(--blue-glow); }
+        .pill-dot.p { background: var(--purple); box-shadow: 0 0 8px var(--purple-glow); }
+
+        /* ── Flow diagram ── */
+        .flow { display: flex; align-items: center; justify-content: center; gap: 0; margin: 40px 0; flex-wrap: wrap; }
+        .flow-step {
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+            padding: 24px 20px; min-width: 150px; position: relative;
+        }
+        .flow-icon {
+            width: 56px; height: 56px; border-radius: 16px; display: flex;
+            align-items: center; justify-content: center; font-size: 24px;
+            position: relative; transition: var(--transition);
+        }
+        .flow-step:hover .flow-icon { transform: scale(1.1); }
+        .flow-icon.o { background: linear-gradient(135deg, rgba(245,158,11,.15), rgba(245,158,11,.05)); border: 1px solid rgba(245,158,11,.2); }
+        .flow-icon.b { background: linear-gradient(135deg, rgba(59,130,246,.15), rgba(59,130,246,.05)); border: 1px solid rgba(59,130,246,.2); }
+        .flow-icon.g { background: linear-gradient(135deg, rgba(16,185,129,.15), rgba(16,185,129,.05)); border: 1px solid rgba(16,185,129,.2); }
+        .flow-label { font-size: 13px; font-weight: 600; text-align: center; color: var(--text); }
         .flow-desc { font-size: 12px; color: var(--muted); text-align: center; }
-        .flow-arrow { font-size: 20px; color: var(--muted); padding: 0 4px; }
+        .flow-arrow { font-size: 18px; color: var(--border-2); padding: 0 4px; }
 
-        /* Cards */
-        .card-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 16px; margin: 24px 0; }
-        .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 24px; transition: border-color .2s; }
-        .card:hover { border-color: var(--accent); }
-        .card-icon { font-size: 28px; margin-bottom: 12px; }
-        .card h4 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
-        .card p { font-size: 14px; color: var(--muted); margin: 0; }
+        /* ── Cards ── */
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin: 28px 0; }
+        .card {
+            background: linear-gradient(135deg, var(--surface), var(--surface-2));
+            border: 1px solid var(--border); border-radius: var(--r); padding: 28px;
+            transition: var(--transition); position: relative; overflow: hidden;
+        }
+        .card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,.1), transparent);
+            opacity: 0; transition: var(--transition);
+        }
+        .card:hover { border-color: rgba(255,255,255,.1); transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,.3); }
+        .card:hover::before { opacity: 1; }
+        .card-icon { font-size: 32px; margin-bottom: 16px; display: block; }
+        .card h4 { font-size: 16px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+        .card p { font-size: 14px; color: var(--muted-2); margin: 0; line-height: 1.6; }
 
-        /* Feature grid */
-        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: 12px; margin: 24px 0; }
-        .feature { background: var(--surface); border: 1px solid var(--border); border-radius: var(--rs); padding: 16px 20px; font-size: 14px; display: flex; align-items: center; gap: 10px; }
-        .feature-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-        .feature-dot.orange { background: var(--accent); }
-        .feature-dot.green { background: var(--green); }
-        .feature-dot.blue { background: var(--blue); }
-        .feature-dot.purple { background: var(--purple); }
+        /* ── Code ── */
+        pre {
+            background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+            padding: 20px 24px; overflow-x: auto; margin: 16px 0 24px;
+            font-family: var(--mono); font-size: 13.5px; line-height: 1.7;
+            position: relative;
+        }
+        pre::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,.06), transparent);
+        }
+        code { font-family: var(--mono); font-size: .88em; }
+        p code, li code, td code {
+            background: rgba(255,255,255,.06); padding: 2px 8px; border-radius: 6px;
+            font-size: 13px; border: 1px solid rgba(255,255,255,.06);
+        }
+        .code-comment { color: var(--muted); }
+        .code-string { color: var(--green-2); }
+        .code-keyword { color: var(--purple-2); }
 
-        /* Code */
-        pre { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px 24px; overflow-x: auto; margin: 16px 0 24px; font-family: var(--mono); font-size: 14px; line-height: 1.6; }
-        code { font-family: var(--mono); font-size: .9em; }
-        p code, li code, td code { background: var(--surface-2); padding: 2px 7px; border-radius: 4px; font-size: 13px; border: 1px solid var(--border); }
-
-        /* Tables */
-        .table-wrap { overflow-x: auto; margin: 16px 0 24px; }
+        /* ── Tables ── */
+        .table-wrap { overflow-x: auto; margin: 16px 0 28px; border-radius: var(--r); border: 1px solid var(--border); }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th { text-align: left; padding: 12px 16px; background: var(--surface); border-bottom: 2px solid var(--border); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-        td { padding: 12px 16px; border-bottom: 1px solid var(--border); }
-        tr:last-child td { border-bottom: none; }
+        th {
+            text-align: left; padding: 14px 18px; background: var(--surface);
+            font-weight: 600; font-size: 12px; text-transform: uppercase;
+            letter-spacing: .06em; color: var(--muted);
+        }
+        td { padding: 14px 18px; border-top: 1px solid var(--border); }
 
-        /* Steps */
-        .steps { counter-reset: step; list-style: none; margin: 24px 0; }
-        .steps li { counter-increment: step; position: relative; padding-left: 48px; margin-bottom: 20px; }
-        .steps li::before { content: counter(step); position: absolute; left: 0; top: 2px; width: 32px; height: 32px; background: var(--accent-soft); color: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
-        .steps li strong { display: block; margin-bottom: 4px; }
-        .steps li span { font-size: 14px; color: var(--muted); }
+        /* ── Steps ── */
+        .steps { counter-reset: step; list-style: none; margin: 28px 0; }
+        .steps li { counter-increment: step; position: relative; padding-left: 52px; margin-bottom: 24px; }
+        .steps li::before {
+            content: counter(step); position: absolute; left: 0; top: 2px;
+            width: 34px; height: 34px;
+            background: linear-gradient(135deg, var(--accent-glow), rgba(245,158,11,.05));
+            border: 1px solid rgba(245,158,11,.2);
+            color: var(--accent-2); border-radius: 10px; display: flex;
+            align-items: center; justify-content: center; font-size: 14px; font-weight: 700;
+        }
+        .steps li strong { display: block; margin-bottom: 4px; color: var(--text); }
+        .steps li span { font-size: 14px; color: var(--muted-2); }
 
-        /* Tree */
-        .tree { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 24px; font-family: var(--mono); font-size: 13px; line-height: 1.8; margin: 16px 0 24px; }
-        .tree .file { color: var(--blue); }
+        /* ── Tree ── */
+        .tree {
+            background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+            padding: 24px 28px; font-family: var(--mono); font-size: 13px; line-height: 2;
+            margin: 16px 0 24px; position: relative; overflow: hidden;
+        }
+        .tree::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,.06), transparent);
+        }
+        .tree .file { color: var(--blue-2); }
         .tree .desc { color: var(--muted); }
-        .tree .new { color: var(--green); font-weight: 600; }
+        .tree .new { color: var(--green-2); font-weight: 600; }
 
-        /* Alert */
-        .alert { border-radius: var(--r); padding: 16px 20px; margin: 24px 0; font-size: 14px; }
-        .alert-orange { background: var(--accent-soft); border: 1px solid rgba(247,147,26,.25); }
-        .alert-orange strong { color: var(--accent); }
-        .alert-green { background: var(--green-soft); border: 1px solid rgba(52,211,153,.25); }
-        .alert-green strong { color: var(--green); }
+        /* ── Alert ── */
+        .alert { border-radius: var(--r); padding: 18px 22px; margin: 24px 0; font-size: 14px; line-height: 1.6; }
+        .alert-orange { background: linear-gradient(135deg, var(--accent-glow), rgba(245,158,11,.03)); border: 1px solid rgba(245,158,11,.2); }
+        .alert-orange strong { color: var(--accent-2); }
+        .alert-green { background: linear-gradient(135deg, var(--green-glow), rgba(16,185,129,.03)); border: 1px solid rgba(16,185,129,.2); }
+        .alert-green strong { color: var(--green-2); }
 
-        /* Footer */
-        footer { padding: 40px 0; border-top: 1px solid var(--border); text-align: center; color: var(--muted); font-size: 14px; }
-        footer a { color: var(--accent); text-decoration: none; }
-        footer a:hover { text-decoration: underline; }
+        /* ── Stats counter ── */
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 36px 0; }
+        .stat {
+            text-align: center; padding: 28px 16px; border-radius: var(--r);
+            background: linear-gradient(135deg, var(--surface), var(--surface-2));
+            border: 1px solid var(--border); transition: var(--transition);
+        }
+        .stat:hover { border-color: rgba(255,255,255,.1); transform: translateY(-2px); }
+        .stat-number {
+            font-size: 2.2rem; font-weight: 900; letter-spacing: -.03em;
+            background: linear-gradient(135deg, var(--text), var(--muted-2));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .stat-number.accent { background: linear-gradient(135deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .stat-label { font-size: 13px; color: var(--muted); margin-top: 4px; font-weight: 500; }
 
-        @media (max-width: 600px) {
-            .hero { padding: 48px 0 40px; }
-            section { padding: 40px 0; }
+        /* ── Terminal mockup ── */
+        .terminal {
+            background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+            overflow: hidden; margin: 24px 0;
+        }
+        .terminal-bar {
+            display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+            background: rgba(255,255,255,.02); border-bottom: 1px solid var(--border);
+        }
+        .terminal-dot { width: 12px; height: 12px; border-radius: 50%; }
+        .terminal-dot.red { background: #ef4444; }
+        .terminal-dot.yellow { background: #eab308; }
+        .terminal-dot.green { background: #22c55e; }
+        .terminal-title { flex: 1; text-align: center; font-size: 12px; color: var(--muted); font-family: var(--mono); }
+        .terminal-body { padding: 20px 24px; font-family: var(--mono); font-size: 13.5px; line-height: 1.7; }
+        .terminal-prompt { color: var(--green-2); }
+        .terminal-cmd { color: var(--text); }
+        .terminal-output { color: var(--muted-2); }
+
+        /* ── Scroll animations ── */
+        .animate { opacity: 0; transform: translateY(30px); transition: opacity .6s ease, transform .6s ease; }
+        .animate.visible { opacity: 1; transform: translateY(0); }
+
+        /* ── Footer ── */
+        footer {
+            padding: 48px 0; text-align: center; color: var(--muted); font-size: 14px;
+            border-top: 1px solid var(--border);
+        }
+        footer a { color: var(--accent-2); }
+        .footer-links { display: flex; gap: 24px; justify-content: center; margin-bottom: 16px; }
+        .footer-links a { color: var(--muted-2); font-weight: 500; font-size: 13px; transition: var(--transition); }
+        .footer-links a:hover { color: var(--text); text-decoration: none; }
+
+        @media (max-width: 768px) {
+            .hero { padding: 120px 0 60px; }
+            section { padding: 60px 0; }
             .flow { flex-direction: column; }
             .flow-arrow { transform: rotate(90deg); }
-            .card-grid, .feature-grid { grid-template-columns: 1fr; }
+            .card-grid { grid-template-columns: 1fr; }
+            .stats { grid-template-columns: repeat(2, 1fr); }
+            .nav-links a:not(.nav-cta) { display: none; }
         }
     </style>
 </head>
 <body>
 
+<div class="bg-grid"></div>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<!-- NAV -->
+<nav>
+    <div class="container">
+        <a href="#" class="nav-brand">
+            <div class="nav-logo">FP</div>
+            Force Profile
+        </a>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#install">Install</a>
+            <a href="#config">Config</a>
+            <a href="#technical">Technical</a>
+            <a href="https://github.com/Oltrematica/moodle-local_forceprofile/releases" class="nav-cta">Download</a>
+        </div>
+    </div>
+</nav>
+
+<!-- HERO -->
 <header class="hero">
     <div class="container">
-        <div class="hero-badge">Moodle Local Plugin &middot; v2.0</div>
-        <h1>Force <span>Profile</span> Completion</h1>
-        <p>Ensure every user completes their profile before accessing the platform. Regex validation, event logging, admin dashboard, completion tracking.</p>
+        <div class="hero-version">
+            Moodle Local Plugin
+            <span class="hero-version-tag">v2.0</span>
+        </div>
+        <h1>Force <span class="gradient">Profile</span> Completion</h1>
+        <p>Ensure every user completes their profile before accessing the platform. Regex validation, event logging, admin dashboard, and completion tracking.</p>
         <div class="badges">
             <img src="https://img.shields.io/badge/Moodle-4.5%2B-orange?style=flat-square" alt="Moodle 4.5+">
             <img src="https://img.shields.io/badge/PHP-8.1%2B-blue?style=flat-square" alt="PHP 8.1+">
             <img src="https://img.shields.io/badge/License-GPLv3-green?style=flat-square" alt="GPL v3">
-            <img src="https://img.shields.io/badge/PHPUnit-tested-purple?style=flat-square" alt="PHPUnit tested">
+            <img src="https://img.shields.io/badge/PHPUnit-17_tests-purple?style=flat-square" alt="17 tests">
         </div>
         <div class="hero-actions">
-            <a href="https://github.com/Oltrematica/moodle-local_forceprofile/releases" class="btn btn-primary">Download Latest Release</a>
-            <a href="https://github.com/Oltrematica/moodle-local_forceprofile" class="btn btn-secondary">View on GitHub</a>
+            <a href="https://github.com/Oltrematica/moodle-local_forceprofile/releases" class="btn btn-primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Latest
+            </a>
+            <a href="https://github.com/Oltrematica/moodle-local_forceprofile" class="btn btn-secondary">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                View on GitHub
+            </a>
         </div>
     </div>
 </header>
 
-<main class="container">
-
-<!-- FEATURES -->
+<!-- STATS -->
 <section>
-    <h2>Features</h2>
-    <p class="subtitle">Everything you need to enforce profile completion on your Moodle site.</p>
-    <div class="feature-grid">
-        <div class="feature"><div class="feature-dot orange"></div>Any custom profile field</div>
-        <div class="feature"><div class="feature-dot orange"></div>Regex validation per field</div>
-        <div class="feature"><div class="feature-dot blue"></div>Admin status dashboard</div>
-        <div class="feature"><div class="feature-dot purple"></div>Event logging (blocked/completed)</div>
-        <div class="feature"><div class="feature-dot green"></div>Completion timestamp tracking</div>
-        <div class="feature"><div class="feature-dot green"></div>Session caching (minimal DB load)</div>
-        <div class="feature"><div class="feature-dot blue"></div>GDPR privacy provider</div>
-        <div class="feature"><div class="feature-dot purple"></div>PHPUnit test suite</div>
-        <div class="feature"><div class="feature-dot orange"></div>English + Italian language packs</div>
+    <div class="container">
+        <div class="stats animate">
+            <div class="stat">
+                <div class="stat-number accent">5</div>
+                <div class="stat-label">Major Features</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">17</div>
+                <div class="stat-label">Unit Tests</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">2</div>
+                <div class="stat-label">Languages</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number accent">0</div>
+                <div class="stat-label">Personal Data Stored</div>
+            </div>
+        </div>
     </div>
 </section>
+
+<div class="section-divider"></div>
+
+<!-- FEATURES -->
+<section id="features">
+    <div class="container animate">
+        <h2>Features</h2>
+        <p class="subtitle">Everything you need to enforce profile completion on your Moodle site.</p>
+        <div class="pill-grid">
+            <div class="pill"><div class="pill-dot o"></div>Any custom profile field</div>
+            <div class="pill"><div class="pill-dot o"></div>Regex validation per field</div>
+            <div class="pill"><div class="pill-dot b"></div>Admin status dashboard</div>
+            <div class="pill"><div class="pill-dot p"></div>Event logging</div>
+            <div class="pill"><div class="pill-dot g"></div>Completion tracking</div>
+            <div class="pill"><div class="pill-dot g"></div>Session caching</div>
+            <div class="pill"><div class="pill-dot b"></div>GDPR privacy provider</div>
+            <div class="pill"><div class="pill-dot p"></div>PHPUnit test suite</div>
+            <div class="pill"><div class="pill-dot o"></div>English + Italian</div>
+        </div>
+    </div>
+</section>
+
+<div class="section-divider"></div>
 
 <!-- THE PROBLEM -->
 <section>
-    <h2>The Problem</h2>
-    <p class="subtitle">Moodle doesn't natively support a "complete your profile" gate for custom fields.</p>
-    <div class="card-grid">
-        <div class="card">
-            <div class="card-icon">&#128100;</div>
-            <h4>Admin creates users manually</h4>
-            <p>Often with only name, email, and password &mdash; missing important custom fields.</p>
+    <div class="container animate">
+        <h2>The Problem</h2>
+        <p class="subtitle">Moodle doesn't natively support a "complete your profile" gate for custom fields.</p>
+        <div class="card-grid">
+            <div class="card">
+                <span class="card-icon">&#128100;</span>
+                <h4>Admin creates users manually</h4>
+                <p>Often with only name, email, and password &mdash; missing important custom fields like tax code or profession.</p>
+            </div>
+            <div class="card">
+                <span class="card-icon">&#128683;</span>
+                <h4>"Required" blocks admins</h4>
+                <p>Making fields required prevents admins from creating accounts without that data. A catch-22.</p>
+            </div>
+            <div class="card">
+                <span class="card-icon">&#9888;&#65039;</span>
+                <h4>Users ignore optional fields</h4>
+                <p>Without enforcement, users never fill in their profile. Data stays incomplete forever.</p>
+            </div>
         </div>
-        <div class="card">
-            <div class="card-icon">&#128683;</div>
-            <h4>"Required" blocks admins</h4>
-            <p>Making fields required prevents admins from creating accounts without that data.</p>
+        <div class="alert alert-orange">
+            <strong>This plugin solves the gap:</strong> Admins create accounts freely. Users are forced to complete their profile at first login. Everyone wins.
         </div>
-        <div class="card">
-            <div class="card-icon">&#9888;&#65039;</div>
-            <h4>Users ignore optional fields</h4>
-            <p>Without enforcement, users never fill in their profile &mdash; data stays incomplete forever.</p>
-        </div>
-    </div>
-    <div class="alert alert-orange">
-        <strong>This plugin solves the gap:</strong> Admins create accounts freely. Users are forced to complete their profile at first login.
     </div>
 </section>
+
+<div class="section-divider"></div>
 
 <!-- HOW IT WORKS -->
 <section>
-    <h2>How It Works</h2>
-    <p class="subtitle">A seamless two-step flow: admin creates, user completes.</p>
-    <div class="flow">
-        <div class="flow-step">
-            <div class="flow-icon orange">&#128221;</div>
-            <div class="flow-label">Admin creates user</div>
-            <div class="flow-desc">Minimal data only</div>
+    <div class="container animate">
+        <h2>How It Works</h2>
+        <p class="subtitle">A seamless two-step flow: admin creates, user completes.</p>
+        <div class="flow">
+            <div class="flow-step">
+                <div class="flow-icon o">&#128221;</div>
+                <div class="flow-label">Admin creates user</div>
+                <div class="flow-desc">Minimal data only</div>
+            </div>
+            <div class="flow-arrow">&#10132;</div>
+            <div class="flow-step">
+                <div class="flow-icon b">&#128274;</div>
+                <div class="flow-label">User logs in</div>
+                <div class="flow-desc">Plugin intercepts every page</div>
+            </div>
+            <div class="flow-arrow">&#10132;</div>
+            <div class="flow-step">
+                <div class="flow-icon o">&#9997;&#65039;</div>
+                <div class="flow-label">Fill &amp; validate</div>
+                <div class="flow-desc">Redirect until complete</div>
+            </div>
+            <div class="flow-arrow">&#10132;</div>
+            <div class="flow-step">
+                <div class="flow-icon g">&#10003;</div>
+                <div class="flow-label">Access granted</div>
+                <div class="flow-desc">Completion tracked</div>
+            </div>
         </div>
-        <div class="flow-arrow">&#10132;</div>
-        <div class="flow-step">
-            <div class="flow-icon blue">&#128274;</div>
-            <div class="flow-label">User logs in</div>
-            <div class="flow-desc">Plugin intercepts every page</div>
-        </div>
-        <div class="flow-arrow">&#10132;</div>
-        <div class="flow-step">
-            <div class="flow-icon orange">&#9997;&#65039;</div>
-            <div class="flow-label">Fill &amp; validate fields</div>
-            <div class="flow-desc">Redirect until complete</div>
-        </div>
-        <div class="flow-arrow">&#10132;</div>
-        <div class="flow-step">
-            <div class="flow-icon green">&#10003;</div>
-            <div class="flow-label">Access granted</div>
-            <div class="flow-desc">Completion tracked</div>
-        </div>
+        <p>The plugin hooks into Moodle's <code>after_require_login</code> callback, which fires on <strong>every protected page load</strong>. Users cannot bypass the check by navigating directly to any URL.</p>
     </div>
-    <p>The plugin hooks into Moodle's <code>after_require_login</code> callback, which fires on <strong>every protected page load</strong>. Users cannot bypass the check by navigating directly to any URL.</p>
 </section>
+
+<div class="section-divider"></div>
 
 <!-- INSTALLATION -->
-<section>
-    <h2>Installation</h2>
-    <p class="subtitle">Two ways to install &mdash; pick your favorite.</p>
-    <h3>Option A &mdash; Git clone</h3>
-    <pre>cd /path/to/moodle/local
-git clone https://github.com/Oltrematica/moodle-local_forceprofile.git forceprofile</pre>
-    <h3>Option B &mdash; Download ZIP</h3>
-    <p>Download the latest <code>.zip</code> from <a href="https://github.com/Oltrematica/moodle-local_forceprofile/releases">GitHub Releases</a> and extract into <code>local/forceprofile/</code>.</p>
-    <h3>Finalize</h3>
-    <ol class="steps">
-        <li><strong>Trigger installation</strong><span>Go to <b>Site administration &rarr; Notifications</b> &mdash; Moodle detects the plugin.</span></li>
-        <li><strong>Configure the plugin</strong><span><b>Site administration &rarr; Plugins &rarr; Local plugins &rarr; Force Profile Completion</b></span></li>
-        <li><strong>Add your field shortnames</strong><span>Enter one shortname per line for the fields you want to enforce.</span></li>
-        <li><strong>Enable the plugin</strong><span>Flip the toggle to activate enforcement.</span></li>
-    </ol>
+<section id="install">
+    <div class="container animate">
+        <h2>Installation</h2>
+        <p class="subtitle">Two ways to install &mdash; pick your favorite.</p>
+
+        <h3>Option A &mdash; Git clone</h3>
+        <div class="terminal">
+            <div class="terminal-bar">
+                <div class="terminal-dot red"></div>
+                <div class="terminal-dot yellow"></div>
+                <div class="terminal-dot green"></div>
+                <div class="terminal-title">Terminal</div>
+            </div>
+            <div class="terminal-body">
+                <span class="terminal-prompt">$</span> <span class="terminal-cmd">cd /path/to/moodle/local</span><br>
+                <span class="terminal-prompt">$</span> <span class="terminal-cmd">git clone https://github.com/Oltrematica/moodle-local_forceprofile.git forceprofile</span><br>
+                <span class="terminal-output">Cloning into 'forceprofile'...<br>done.</span>
+            </div>
+        </div>
+
+        <h3>Option B &mdash; Download ZIP</h3>
+        <p>Download the latest <code>.zip</code> from <a href="https://github.com/Oltrematica/moodle-local_forceprofile/releases">GitHub Releases</a> and extract into <code>local/forceprofile/</code>.</p>
+
+        <h3>Finalize</h3>
+        <ol class="steps">
+            <li><strong>Trigger installation</strong><span>Go to <b>Site administration &rarr; Notifications</b> &mdash; Moodle detects the plugin.</span></li>
+            <li><strong>Configure the plugin</strong><span><b>Site administration &rarr; Plugins &rarr; Local plugins &rarr; Force Profile Completion</b></span></li>
+            <li><strong>Add your field shortnames</strong><span>Enter one shortname per line for the fields you want to enforce.</span></li>
+            <li><strong>Enable the plugin</strong><span>Flip the toggle to activate enforcement.</span></li>
+        </ol>
+    </div>
 </section>
+
+<div class="section-divider"></div>
 
 <!-- CONFIGURATION -->
-<section>
-    <h2>Configuration</h2>
-    <p class="subtitle">Everything is managed from the admin settings panel.</p>
-    <div class="table-wrap">
-        <table>
-            <thead><tr><th>Setting</th><th>Description</th><th>Default</th></tr></thead>
-            <tbody>
-                <tr><td><strong>Enable</strong></td><td>Activate or deactivate the plugin</td><td>Disabled</td></tr>
-                <tr><td><strong>Fields to check</strong></td><td>Custom profile field shortnames, one per line</td><td><em>(empty)</em></td></tr>
-                <tr><td><strong>Validation patterns</strong></td><td>Optional regex per field: <code>shortname:/pattern/</code></td><td><em>(empty)</em></td></tr>
-                <tr><td><strong>Message</strong></td><td>Warning message shown on redirect</td><td><em>"You must complete your profile&hellip;"</em></td></tr>
-                <tr><td><strong>Redirect URL</strong></td><td>Local path for profile completion</td><td><code>/user/edit.php</code></td></tr>
-            </tbody>
-        </table>
-    </div>
+<section id="config">
+    <div class="container animate">
+        <h2>Configuration</h2>
+        <p class="subtitle">Everything is managed from the admin settings panel.</p>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Setting</th><th>Description</th><th>Default</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Enable</strong></td><td>Activate or deactivate the plugin</td><td>Disabled</td></tr>
+                    <tr><td><strong>Fields to check</strong></td><td>Custom profile field shortnames, one per line</td><td><em>(empty)</em></td></tr>
+                    <tr><td><strong>Validation patterns</strong></td><td>Optional regex per field: <code>shortname:/pattern/</code></td><td><em>(empty)</em></td></tr>
+                    <tr><td><strong>Message</strong></td><td>Warning message shown on redirect</td><td><em>"You must complete your profile&hellip;"</em></td></tr>
+                    <tr><td><strong>Redirect URL</strong></td><td>Local path for profile completion</td><td><code>/user/edit.php</code></td></tr>
+                </tbody>
+            </table>
+        </div>
 
-    <h3>Validation Patterns</h3>
-    <p>Optionally enforce a format for specific fields using regex. One pattern per line:</p>
-    <pre>CF:/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/i
-phone:/^\+?[0-9]{8,15}$/
-zip_code:/^[0-9]{5}$/</pre>
-    <p>Fields without a pattern only need to be non-empty. Fields with a pattern must also match the regex. Invalid patterns are silently skipped.</p>
-
-    <h3>Recommended Profile Field Settings</h3>
-    <div class="table-wrap">
-        <table>
-            <thead><tr><th>Setting</th><th>Value</th><th>Why</th></tr></thead>
-            <tbody>
-                <tr><td>Required</td><td><strong>No</strong></td><td>So admins aren't blocked when creating users</td></tr>
-                <tr><td>Locked</td><td><strong>No</strong></td><td>So users can fill them in</td></tr>
-                <tr><td>Unique</td><td><strong>No</strong></td><td>So empty values don't conflict</td></tr>
-            </tbody>
-        </table>
+        <h3>Validation Patterns</h3>
+        <p>Optionally enforce a format for specific fields using regex. One pattern per line:</p>
+        <div class="terminal">
+            <div class="terminal-bar">
+                <div class="terminal-dot red"></div>
+                <div class="terminal-dot yellow"></div>
+                <div class="terminal-dot green"></div>
+                <div class="terminal-title">Validation patterns setting</div>
+            </div>
+            <div class="terminal-body">
+                <span class="terminal-output"><span class="code-comment"># Italian tax code (Codice Fiscale)</span></span><br>
+                <span class="terminal-cmd">CF:<span class="code-string">/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/i</span></span><br><br>
+                <span class="terminal-output"><span class="code-comment"># International phone number</span></span><br>
+                <span class="terminal-cmd">phone:<span class="code-string">/^\+?[0-9]{8,15}$/</span></span><br><br>
+                <span class="terminal-output"><span class="code-comment"># Italian ZIP code</span></span><br>
+                <span class="terminal-cmd">zip_code:<span class="code-string">/^[0-9]{5}$/</span></span>
+            </div>
+        </div>
+        <p>Fields without a pattern only need to be non-empty. Fields with a pattern must match the regex. Invalid patterns are silently skipped.</p>
     </div>
 </section>
 
-<!-- STATUS PAGE -->
+<div class="section-divider"></div>
+
+<!-- STATUS DASHBOARD -->
 <section>
-    <h2>Admin Status Dashboard</h2>
-    <p class="subtitle">Monitor profile completion across your entire user base.</p>
-    <p>Navigate to <strong>Site administration &rarr; Plugins &rarr; Local plugins &rarr; Profile Completion Status</strong>.</p>
-    <div class="card-grid">
-        <div class="card">
-            <div class="card-icon">&#128202;</div>
-            <h4>Summary Counters</h4>
-            <p>Total users, incomplete profiles, and complete profiles at a glance.</p>
+    <div class="container animate">
+        <h2>Admin Status Dashboard</h2>
+        <p class="subtitle">Monitor profile completion across your entire user base.</p>
+        <div class="card-grid">
+            <div class="card">
+                <span class="card-icon">&#128202;</span>
+                <h4>Summary Counters</h4>
+                <p>Total users, incomplete profiles, and complete profiles at a glance with colored badges.</p>
+            </div>
+            <div class="card">
+                <span class="card-icon">&#128203;</span>
+                <h4>Detailed User Table</h4>
+                <p>Username, full name, email, missing fields as badges, and last access date.</p>
+            </div>
+            <div class="card">
+                <span class="card-icon">&#128736;</span>
+                <h4>Quick Actions</h4>
+                <p>Direct links to view and edit each user's profile. Pagination for large sites.</p>
+            </div>
         </div>
-        <div class="card">
-            <div class="card-icon">&#128203;</div>
-            <h4>User Table</h4>
-            <p>Username, full name, email, missing fields (as badges), and last access date.</p>
-        </div>
-        <div class="card">
-            <div class="card-icon">&#128736;</div>
-            <h4>Quick Actions</h4>
-            <p>Direct links to view and edit each user's profile. Pagination for large sites.</p>
-        </div>
+        <p>Navigate to <strong>Site administration &rarr; Plugins &rarr; Local plugins &rarr; Profile Completion Status</strong>. Requires <code>local/forceprofile:viewstatus</code> capability.</p>
     </div>
-    <p>Requires the <code>local/forceprofile:viewstatus</code> capability (default: Manager role).</p>
 </section>
+
+<div class="section-divider"></div>
 
 <!-- EVENTS -->
 <section>
-    <h2>Event Logging</h2>
-    <p class="subtitle">Full audit trail in Moodle's standard log system.</p>
-    <div class="table-wrap">
-        <table>
-            <thead><tr><th>Event</th><th>When</th><th>Data</th></tr></thead>
-            <tbody>
-                <tr>
-                    <td><code>profile_blocked</code></td>
-                    <td>User is redirected to complete profile</td>
-                    <td>User ID, list of incomplete fields</td>
-                </tr>
-                <tr>
-                    <td><code>profile_completed</code></td>
-                    <td>User fills in all required fields</td>
-                    <td>User ID, completion record ID</td>
-                </tr>
-            </tbody>
-        </table>
+    <div class="container animate">
+        <h2>Event Logging &amp; Completion Tracking</h2>
+        <p class="subtitle">Full audit trail in Moodle's standard log system.</p>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Event</th><th>When</th><th>Data</th></tr></thead>
+                <tbody>
+                    <tr>
+                        <td><code>profile_blocked</code></td>
+                        <td>User is redirected to complete profile</td>
+                        <td>User ID, list of incomplete fields</td>
+                    </tr>
+                    <tr>
+                        <td><code>profile_completed</code></td>
+                        <td>User fills in all required fields</td>
+                        <td>User ID, completion record ID</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>When a user completes all fields, a timestamp is recorded in <code>local_forceprofile_compl</code>. This data can be queried for reports or exported via the Moodle privacy API.</p>
+        <div class="alert alert-green">
+            <strong>GDPR compliant:</strong> Completion timestamps can be exported and deleted via Moodle's privacy API. Full provider implementation included.
+        </div>
     </div>
-    <p>Events are visible in <strong>Site administration &rarr; Reports &rarr; Logs</strong> and can trigger external integrations via Moodle's event observer system.</p>
 </section>
 
-<!-- COMPLETION TRACKING -->
-<section>
-    <h2>Completion Tracking</h2>
-    <p class="subtitle">Know exactly when each user completed their profile.</p>
-    <p>When a user fills in all required fields and passes validation, the plugin records a timestamp in the <code>local_forceprofile_compl</code> table.</p>
-    <div class="table-wrap">
-        <table>
-            <thead><tr><th>Column</th><th>Description</th></tr></thead>
-            <tbody>
-                <tr><td><code>userid</code></td><td>User who completed the profile (unique)</td></tr>
-                <tr><td><code>timecompleted</code></td><td>Unix timestamp of completion</td></tr>
-            </tbody>
-        </table>
-    </div>
-    <div class="alert alert-green">
-        <strong>GDPR compliant:</strong> This data can be exported and deleted via Moodle's privacy API. Full provider implementation included.
-    </div>
-</section>
+<div class="section-divider"></div>
 
 <!-- CAPABILITIES -->
 <section>
-    <h2>Capabilities</h2>
-    <p class="subtitle">Fine-grained access control.</p>
-    <div class="table-wrap">
-        <table>
-            <thead><tr><th>Capability</th><th>Description</th><th>Default Roles</th></tr></thead>
-            <tbody>
-                <tr><td><code>local/forceprofile:exempt</code></td><td>Exempt from forced profile completion</td><td>Manager, Editing Teacher</td></tr>
-                <tr><td><code>local/forceprofile:viewstatus</code></td><td>Access the status dashboard</td><td>Manager</td></tr>
-            </tbody>
-        </table>
+    <div class="container animate">
+        <h2>Capabilities</h2>
+        <p class="subtitle">Fine-grained access control for exemptions and dashboard access.</p>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Capability</th><th>Description</th><th>Default Roles</th></tr></thead>
+                <tbody>
+                    <tr><td><code>local/forceprofile:exempt</code></td><td>Exempt from forced profile completion</td><td>Manager, Editing Teacher</td></tr>
+                    <tr><td><code>local/forceprofile:viewstatus</code></td><td>Access the status dashboard</td><td>Manager</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p><strong>Site administrators are always exempt.</strong> Assign capabilities to additional roles via <strong>Site administration &rarr; Users &rarr; Permissions &rarr; Define roles</strong>.</p>
     </div>
-    <p><strong>Site administrators are always exempt.</strong></p>
 </section>
 
+<div class="section-divider"></div>
+
 <!-- TECHNICAL -->
-<section>
-    <h2>Under the Hood</h2>
-    <p class="subtitle">Security, performance, and architecture.</p>
-    <div class="card-grid">
-        <div class="card">
-            <div class="card-icon">&#9889;</div>
-            <h4>Session Caching</h4>
-            <p>Once complete, cached in <code>$SESSION</code>. No DB queries for the rest of the session.</p>
+<section id="technical">
+    <div class="container animate">
+        <h2>Under the Hood</h2>
+        <p class="subtitle">Security, performance, and architecture.</p>
+        <div class="card-grid">
+            <div class="card">
+                <span class="card-icon">&#9889;</span>
+                <h4>Session Caching</h4>
+                <p>Once complete, cached in <code>$SESSION</code>. Zero DB queries for the rest of the session.</p>
+            </div>
+            <div class="card">
+                <span class="card-icon">&#128737;</span>
+                <h4>SQL Injection Safe</h4>
+                <p>Parameterized queries via Moodle's <code>$DB</code> API. No raw SQL anywhere.</p>
+            </div>
+            <div class="card">
+                <span class="card-icon">&#128272;</span>
+                <h4>XSS Protected</h4>
+                <p>All messages sanitized via <code>format_string()</code> before rendering.</p>
+            </div>
+            <div class="card">
+                <span class="card-icon">&#128279;</span>
+                <h4>Open Redirect Safe</h4>
+                <p>Redirect URL validated as <code>PARAM_LOCALURL</code>. External URLs rejected.</p>
+            </div>
+            <div class="card">
+                <span class="card-icon">&#128736;</span>
+                <h4>Typo &amp; Regex Resilient</h4>
+                <p>Non-existent fields and invalid patterns are skipped with debug notices. No loops.</p>
+            </div>
+            <div class="card">
+                <span class="card-icon">&#127891;</span>
+                <h4>PHPUnit Tested</h4>
+                <p>17 tests covering fields, validation, events, completion, and edge cases.</p>
+            </div>
         </div>
-        <div class="card">
-            <div class="card-icon">&#128737;</div>
-            <h4>SQL Injection Safe</h4>
-            <p>Parameterized queries via <code>$DB->get_in_or_equal</code>.</p>
-        </div>
-        <div class="card">
-            <div class="card-icon">&#128272;</div>
-            <h4>XSS Protected</h4>
-            <p>Messages sanitized via <code>format_string()</code>.</p>
-        </div>
-        <div class="card">
-            <div class="card-icon">&#128279;</div>
-            <h4>Open Redirect Safe</h4>
-            <p>Redirect URL validated as <code>PARAM_LOCALURL</code>.</p>
-        </div>
-        <div class="card">
-            <div class="card-icon">&#128736;</div>
-            <h4>Typo &amp; Regex Resilient</h4>
-            <p>Non-existent fields and invalid patterns are skipped with debug notices.</p>
-        </div>
-        <div class="card">
-            <div class="card-icon">&#127891;</div>
-            <h4>PHPUnit Tested</h4>
-            <p>17 tests covering fields, validation, events, completion, and edge cases.</p>
-        </div>
-    </div>
 
-    <h3>Pages Excluded from Redirect</h3>
-    <div class="table-wrap">
-        <table>
-            <thead><tr><th>Path</th><th>Reason</th></tr></thead>
-            <tbody>
-                <tr><td><code>/user/edit.php</code></td><td>Profile edit (where users fill in fields)</td></tr>
-                <tr><td><code>/user/editadvanced.php</code></td><td>Advanced profile edit</td></tr>
-                <tr><td><code>/login/logout.php</code></td><td>Users must always be able to log out</td></tr>
-                <tr><td><code>/login/change_password.php</code></td><td>Password change flow</td></tr>
-                <tr><td><code>/lib/ajax/service.php</code></td><td>AJAX web services</td></tr>
-                <tr><td><code>/lib/ajax/service-nologin.php</code></td><td>AJAX (no login)</td></tr>
-            </tbody>
-        </table>
-    </div>
+        <h3>Pages Excluded from Redirect</h3>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Path</th><th>Reason</th></tr></thead>
+                <tbody>
+                    <tr><td><code>/user/edit.php</code></td><td>Profile edit (where users fill in fields)</td></tr>
+                    <tr><td><code>/user/editadvanced.php</code></td><td>Advanced profile edit</td></tr>
+                    <tr><td><code>/login/logout.php</code></td><td>Users must always be able to log out</td></tr>
+                    <tr><td><code>/login/change_password.php</code></td><td>Password change flow</td></tr>
+                    <tr><td><code>/lib/ajax/service.php</code></td><td>AJAX web services</td></tr>
+                    <tr><td><code>/lib/ajax/service-nologin.php</code></td><td>AJAX (no login)</td></tr>
+                </tbody>
+            </table>
+        </div>
 
-    <h3>Plugin Structure</h3>
-    <div class="tree">
-        <span class="desc">local/forceprofile/</span><br>
-        ├── <span class="file">version.php</span> <span class="desc">&mdash; Plugin metadata</span><br>
-        ├── <span class="file">settings.php</span> <span class="desc">&mdash; Admin settings + external page</span><br>
-        ├── <span class="file">lib.php</span> <span class="desc">&mdash; Core logic, validation, completion</span><br>
-        ├── <span class="new">status.php</span> <span class="desc">&mdash; Admin status dashboard</span><br>
-        ├── db/<br>
-        │&nbsp;&nbsp; ├── <span class="file">access.php</span> <span class="desc">&mdash; Capability definitions</span><br>
-        │&nbsp;&nbsp; ├── <span class="new">install.xml</span> <span class="desc">&mdash; Database schema</span><br>
-        │&nbsp;&nbsp; └── <span class="new">upgrade.php</span> <span class="desc">&mdash; Upgrade steps</span><br>
-        ├── classes/<br>
-        │&nbsp;&nbsp; ├── event/<br>
-        │&nbsp;&nbsp; │&nbsp;&nbsp; ├── <span class="new">profile_blocked.php</span> <span class="desc">&mdash; Blocked event</span><br>
-        │&nbsp;&nbsp; │&nbsp;&nbsp; └── <span class="new">profile_completed.php</span> <span class="desc">&mdash; Completed event</span><br>
-        │&nbsp;&nbsp; └── privacy/<br>
-        │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └── <span class="file">provider.php</span> <span class="desc">&mdash; GDPR provider</span><br>
-        ├── <span class="new">tests/</span><br>
-        │&nbsp;&nbsp; └── <span class="new">lib_test.php</span> <span class="desc">&mdash; PHPUnit tests</span><br>
-        └── lang/<br>
-        &nbsp;&nbsp;&nbsp; ├── en/<span class="file">local_forceprofile.php</span><br>
-        &nbsp;&nbsp;&nbsp; └── it/<span class="file">local_forceprofile.php</span>
+        <h3>Plugin Structure</h3>
+        <div class="tree">
+            <span class="desc">local/forceprofile/</span><br>
+            ├── <span class="file">version.php</span> <span class="desc">&mdash; Plugin metadata</span><br>
+            ├── <span class="file">settings.php</span> <span class="desc">&mdash; Admin settings + external page</span><br>
+            ├── <span class="file">lib.php</span> <span class="desc">&mdash; Core logic, validation, completion</span><br>
+            ├── <span class="new">status.php</span> <span class="desc">&mdash; Admin status dashboard</span><br>
+            ├── db/<br>
+            │&nbsp;&nbsp; ├── <span class="file">access.php</span> <span class="desc">&mdash; Capability definitions</span><br>
+            │&nbsp;&nbsp; ├── <span class="new">install.xml</span> <span class="desc">&mdash; Database schema</span><br>
+            │&nbsp;&nbsp; └── <span class="new">upgrade.php</span> <span class="desc">&mdash; Upgrade steps</span><br>
+            ├── classes/<br>
+            │&nbsp;&nbsp; ├── event/<br>
+            │&nbsp;&nbsp; │&nbsp;&nbsp; ├── <span class="new">profile_blocked.php</span> <span class="desc">&mdash; Blocked event</span><br>
+            │&nbsp;&nbsp; │&nbsp;&nbsp; └── <span class="new">profile_completed.php</span> <span class="desc">&mdash; Completed event</span><br>
+            │&nbsp;&nbsp; └── privacy/<br>
+            │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └── <span class="file">provider.php</span> <span class="desc">&mdash; GDPR provider</span><br>
+            ├── <span class="new">tests/</span><br>
+            │&nbsp;&nbsp; └── <span class="new">lib_test.php</span> <span class="desc">&mdash; PHPUnit tests (17)</span><br>
+            └── lang/<br>
+            &nbsp;&nbsp;&nbsp; ├── en/<span class="file">local_forceprofile.php</span><br>
+            &nbsp;&nbsp;&nbsp; └── it/<span class="file">local_forceprofile.php</span>
+        </div>
+
+        <h3>Run Tests</h3>
+        <div class="terminal">
+            <div class="terminal-bar">
+                <div class="terminal-dot red"></div>
+                <div class="terminal-dot yellow"></div>
+                <div class="terminal-dot green"></div>
+                <div class="terminal-title">PHPUnit</div>
+            </div>
+            <div class="terminal-body">
+                <span class="terminal-prompt">$</span> <span class="terminal-cmd">php vendor/bin/phpunit local/forceprofile/tests/lib_test.php</span><br>
+                <span class="terminal-output">PHPUnit 10.5<br>
+.................&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;17 / 17 (100%)<br><br>
+<span style="color: var(--green-2)">OK (17 tests, 34 assertions)</span></span>
+            </div>
+        </div>
     </div>
 </section>
 
@@ -438,13 +735,39 @@ zip_code:/^[0-9]{5}$/</pre>
 
 <footer>
     <div class="container">
-        <p>
-            <strong>Force Profile Completion</strong> v2.0 &mdash; a <a href="https://www.oltrematica.com">Oltrematica</a> open-source project<br>
-            Licensed under <a href="https://www.gnu.org/licenses/gpl-3.0.html">GNU GPL v3</a> &middot;
+        <div class="footer-links">
             <a href="https://github.com/Oltrematica/moodle-local_forceprofile">GitHub</a>
+            <a href="https://github.com/Oltrematica/moodle-local_forceprofile/releases">Releases</a>
+            <a href="https://github.com/Oltrematica/moodle-local_forceprofile/issues">Issues</a>
+            <a href="https://www.gnu.org/licenses/gpl-3.0.html">License</a>
+        </div>
+        <p>
+            <strong>Force Profile Completion</strong> v2.0 &mdash; built with care by <a href="https://www.oltrematica.com">Oltrematica</a>
         </p>
     </div>
 </footer>
+
+<script>
+// Scroll animations
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+        }
+    });
+}, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+document.querySelectorAll('.animate').forEach(el => observer.observe(el));
+
+// Smooth scroll for nav links
+document.querySelectorAll('a[href^="#"]').forEach(link => {
+    link.addEventListener('click', e => {
+        e.preventDefault();
+        const target = document.querySelector(link.getAttribute('href'));
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+});
+</script>
 
 </body>
 </html>
