@@ -340,3 +340,62 @@ function local_forceprofile_get_incomplete_users(array $shortnames, array $patte
 
     return ['users' => $pagedusers, 'totalcount' => $totalcount];
 }
+
+/**
+ * Inject form enhancements on the profile edit page.
+ *
+ * Adds required indicators and empty default options for configured fields.
+ *
+ * @return string Empty string (required by callback signature).
+ */
+function local_forceprofile_before_standard_html_head() {
+    global $PAGE, $USER;
+
+    // Only act on profile edit pages.
+    try {
+        $currenturl = $PAGE->url->get_path();
+    } catch (\Throwable $e) {
+        return '';
+    }
+
+    if ($currenturl !== '/user/edit.php' && $currenturl !== '/user/editadvanced.php') {
+        return '';
+    }
+
+    // Plugin must be enabled.
+    if (!get_config('local_forceprofile', 'enabled')) {
+        return '';
+    }
+
+    // Not for guests.
+    if (!isloggedin() || isguestuser()) {
+        return '';
+    }
+
+    // Get configured field shortnames.
+    $fieldssetting = get_config('local_forceprofile', 'fields');
+    if (empty($fieldssetting)) {
+        return '';
+    }
+
+    $shortnames = array_filter(array_map('trim', explode("\n", $fieldssetting)));
+    if (empty($shortnames)) {
+        return '';
+    }
+
+    // Determine which user is being edited.
+    $edituserid = optional_param('id', $USER->id, PARAM_INT);
+
+    // Get incomplete fields for the user being edited.
+    $patterns = local_forceprofile_get_validation_patterns();
+    $incompletefields = local_forceprofile_get_incomplete_fields($edituserid, $shortnames, $patterns);
+
+    // Load AMD module with field data.
+    $PAGE->requires->js_call_amd(
+        'local_forceprofile/formenhancer',
+        'init',
+        [array_values($shortnames), array_values($incompletefields)]
+    );
+
+    return '';
+}
