@@ -303,6 +303,33 @@
         .footer-links a { color: var(--muted-2); font-weight: 500; font-size: 13px; transition: var(--transition); }
         .footer-links a:hover { color: var(--text); text-decoration: none; }
 
+        /* ── Changelog ── */
+        .changelog-entry { margin-bottom: 40px; position: relative; padding-left: 28px; }
+        .changelog-entry::before {
+            content: ''; position: absolute; left: 6px; top: 36px; bottom: -20px; width: 2px;
+            background: linear-gradient(180deg, var(--border-2), transparent);
+        }
+        .changelog-entry:last-child::before { display: none; }
+        .changelog-dot {
+            position: absolute; left: 0; top: 10px; width: 14px; height: 14px;
+            border-radius: 50%; border: 2px solid var(--border-2); background: var(--bg);
+        }
+        .changelog-dot.latest { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
+        .changelog-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+        .changelog-version { font-size: 1.2rem; font-weight: 800; color: var(--text); letter-spacing: -.02em; }
+        .changelog-date { font-size: 13px; color: var(--muted); font-weight: 500; }
+        .changelog-tag {
+            font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+            letter-spacing: .03em; text-transform: uppercase;
+        }
+        .changelog-tag.major { background: var(--accent-glow); color: var(--accent-2); border: 1px solid rgba(245,158,11,.2); }
+        .changelog-tag.minor { background: var(--blue-glow); color: var(--blue-2); border: 1px solid rgba(59,130,246,.2); }
+        .changelog-tag.patch { background: var(--green-glow); color: var(--green-2); border: 1px solid rgba(16,185,129,.2); }
+        .changelog-body { font-size: 14px; color: var(--muted-2); line-height: 1.7; }
+        .changelog-body ul { margin: 8px 0 0 16px; }
+        .changelog-body li { margin-bottom: 4px; }
+        .changelog-body li code { font-size: 12px; }
+
         @media (max-width: 768px) {
             .hero { padding: 120px 0 60px; }
             section { padding: 60px 0; }
@@ -333,6 +360,7 @@
             <a href="#install">Install</a>
             <a href="#config">Config</a>
             <a href="#technical">Technical</a>
+            <a href="#changelog">Changelog</a>
             <a href="https://github.com/Oltrematica/moodle-local_forceprofile/releases" class="nav-cta">Download</a>
         </div>
     </div>
@@ -343,10 +371,10 @@
     <div class="container">
         <div class="hero-version">
             Moodle Local Plugin
-            <span class="hero-version-tag">v2.0</span>
+            <span class="hero-version-tag">v2.1</span>
         </div>
         <h1>Force <span class="gradient">Profile</span> Completion</h1>
-        <p>Ensure every user completes their profile before accessing the platform. Regex validation, event logging, admin dashboard, and completion tracking.</p>
+        <p>Ensure every user completes their profile before accessing the platform. Regex validation, event logging, admin dashboard, form enhancement, and completion tracking.</p>
         <div class="badges">
             <img src="https://img.shields.io/badge/Moodle-4.5%2B-orange?style=flat-square" alt="Moodle 4.5+">
             <img src="https://img.shields.io/badge/PHP-8.1%2B-blue?style=flat-square" alt="PHP 8.1+">
@@ -371,7 +399,7 @@
     <div class="container">
         <div class="stats animate">
             <div class="stat">
-                <div class="stat-number accent">5</div>
+                <div class="stat-number accent">6</div>
                 <div class="stat-label">Major Features</div>
             </div>
             <div class="stat">
@@ -406,6 +434,7 @@
             <div class="pill"><div class="pill-dot g"></div>Session caching</div>
             <div class="pill"><div class="pill-dot b"></div>GDPR privacy provider</div>
             <div class="pill"><div class="pill-dot p"></div>PHPUnit test suite</div>
+            <div class="pill"><div class="pill-dot o"></div>Form enhancement UX</div>
             <div class="pill"><div class="pill-dot o"></div>English + Italian</div>
         </div>
     </div>
@@ -585,6 +614,36 @@
 
 <div class="section-divider"></div>
 
+<!-- FORM ENHANCEMENT -->
+<section>
+    <div class="container animate">
+        <h2>Form Enhancement</h2>
+        <p class="subtitle">Smart UX improvements on the profile edit page &mdash; no theme modifications needed.</p>
+        <div class="card-grid">
+            <div class="card">
+                <span class="card-icon" style="color: var(--accent)">&#10071;</span>
+                <h4>Required Field Indicators</h4>
+                <p>A red exclamation icon is automatically injected next to each configured field label, making it immediately obvious which fields must be filled.</p>
+            </div>
+            <div class="card">
+                <span class="card-icon">&#128203;</span>
+                <h4>Smart Select Defaults</h4>
+                <p>Dropdown menus (<code>&lt;select&gt;</code>) for incomplete fields get an empty <em>"Scegli..."</em> option prepended, forcing users to make an explicit choice instead of accidentally submitting the first option.</p>
+            </div>
+            <div class="card">
+                <span class="card-icon">&#9889;</span>
+                <h4>Zero Configuration</h4>
+                <p>Works automatically on <code>/user/edit.php</code> and <code>/user/editadvanced.php</code>. Uses Moodle's AMD module system &mdash; no theme hacks, no custom CSS.</p>
+            </div>
+        </div>
+        <div class="alert alert-orange">
+            <strong>How it works:</strong> The <code>before_standard_html_head</code> callback loads an AMD module (<code>formenhancer.js</code>) that enhances the form client-side. It receives the list of configured fields and which ones are incomplete, then injects the indicators and empty options via DOM manipulation.
+        </div>
+    </div>
+</section>
+
+<div class="section-divider"></div>
+
 <!-- EVENTS -->
 <section>
     <div class="container animate">
@@ -694,8 +753,13 @@
             <span class="desc">local/forceprofile/</span><br>
             ├── <span class="file">version.php</span> <span class="desc">&mdash; Plugin metadata</span><br>
             ├── <span class="file">settings.php</span> <span class="desc">&mdash; Admin settings + external page</span><br>
-            ├── <span class="file">lib.php</span> <span class="desc">&mdash; Core logic, validation, completion</span><br>
+            ├── <span class="file">lib.php</span> <span class="desc">&mdash; Core logic, validation, completion, form enhancement</span><br>
             ├── <span class="new">status.php</span> <span class="desc">&mdash; Admin status dashboard</span><br>
+            ├── <span class="new">amd/</span><br>
+            │&nbsp;&nbsp; ├── src/<br>
+            │&nbsp;&nbsp; │&nbsp;&nbsp; └── <span class="new">formenhancer.js</span> <span class="desc">&mdash; Form enhancement AMD module</span><br>
+            │&nbsp;&nbsp; └── build/<br>
+            │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └── <span class="new">formenhancer.min.js</span> <span class="desc">&mdash; Minified build</span><br>
             ├── db/<br>
             │&nbsp;&nbsp; ├── <span class="file">access.php</span> <span class="desc">&mdash; Capability definitions</span><br>
             │&nbsp;&nbsp; ├── <span class="new">install.xml</span> <span class="desc">&mdash; Database schema</span><br>
@@ -731,6 +795,95 @@
     </div>
 </section>
 
+<div class="section-divider"></div>
+
+<!-- CHANGELOG -->
+<section id="changelog">
+    <div class="container animate">
+        <h2>Changelog</h2>
+        <p class="subtitle">All notable changes to this project.</p>
+
+        <div class="changelog-entry">
+            <div class="changelog-dot latest"></div>
+            <div class="changelog-header">
+                <span class="changelog-version">v2.1.0</span>
+                <span class="changelog-tag minor">Feature</span>
+                <span class="changelog-date">March 2026</span>
+            </div>
+            <div class="changelog-body">
+                <ul>
+                    <li><strong>Form Enhancement</strong> &mdash; red exclamation icon (<code>&#10071;</code>) next to configured field labels on profile edit page</li>
+                    <li><strong>Smart Select Defaults</strong> &mdash; empty <em>"Scegli..."</em> option prepended to <code>&lt;select&gt;</code> fields that are incomplete</li>
+                    <li>New AMD module <code>formenhancer.js</code> using Moodle's module system</li>
+                    <li>New callback <code>before_standard_html_head</code> to inject JS only on edit pages</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="changelog-entry">
+            <div class="changelog-dot"></div>
+            <div class="changelog-header">
+                <span class="changelog-version">v2.0.0</span>
+                <span class="changelog-tag major">Major</span>
+                <span class="changelog-date">March 2026</span>
+            </div>
+            <div class="changelog-body">
+                <ul>
+                    <li><strong>Regex Validation</strong> &mdash; optional per-field regex patterns (e.g. tax code, phone number)</li>
+                    <li><strong>Admin Status Dashboard</strong> &mdash; summary counters, paginated user table with missing fields as badges</li>
+                    <li><strong>Event Logging</strong> &mdash; <code>profile_blocked</code> and <code>profile_completed</code> events in Moodle logs</li>
+                    <li><strong>Completion Tracking</strong> &mdash; timestamp recorded in <code>local_forceprofile_compl</code> table</li>
+                    <li><strong>PHPUnit Tests</strong> &mdash; 17 tests covering all core logic and edge cases</li>
+                    <li>Full GDPR privacy provider with export and delete support</li>
+                    <li>New capability <code>local/forceprofile:viewstatus</code></li>
+                    <li>Plugin made fully generic &mdash; no hardcoded field defaults</li>
+                    <li>Default state: disabled (opt-in activation)</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="changelog-entry">
+            <div class="changelog-dot"></div>
+            <div class="changelog-header">
+                <span class="changelog-version">v1.1.0</span>
+                <span class="changelog-tag patch">Improvements</span>
+                <span class="changelog-date">March 2026</span>
+            </div>
+            <div class="changelog-body">
+                <ul>
+                    <li>Non-existent field shortnames now silently skipped (prevents permanent redirect loops)</li>
+                    <li>Redirect URL validated as local path (<code>PARAM_LOCALURL</code>) &mdash; prevents open redirect</li>
+                    <li>Notification message sanitized with <code>format_string()</code></li>
+                    <li><code>$PAGE-&gt;url</code> access wrapped in try/catch for early page lifecycle safety</li>
+                    <li>Exact path matching instead of loose <code>strpos</code></li>
+                    <li>AJAX and CLI requests excluded from redirect</li>
+                    <li>Session caching to avoid DB query on every page load</li>
+                    <li>Added privacy provider (<code>null_provider</code>)</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="changelog-entry">
+            <div class="changelog-dot"></div>
+            <div class="changelog-header">
+                <span class="changelog-version">v1.0.0</span>
+                <span class="changelog-tag major">Initial</span>
+                <span class="changelog-date">March 2026</span>
+            </div>
+            <div class="changelog-body">
+                <ul>
+                    <li>Initial release</li>
+                    <li>Core <code>after_require_login</code> callback for profile enforcement</li>
+                    <li>Configurable field shortnames, warning message, and redirect URL</li>
+                    <li>Capability <code>local/forceprofile:exempt</code> for managers and editing teachers</li>
+                    <li>English and Italian language packs</li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+</section>
+
 </main>
 
 <footer>
@@ -742,7 +895,7 @@
             <a href="https://www.gnu.org/licenses/gpl-3.0.html">License</a>
         </div>
         <p>
-            <strong>Force Profile Completion</strong> v2.0 &mdash; built with care by <a href="https://www.oltrematica.com">Oltrematica</a>
+            <strong>Force Profile Completion</strong> v2.1 &mdash; built with care by <a href="https://www.oltrematica.com">Oltrematica</a>
         </p>
     </div>
 </footer>
