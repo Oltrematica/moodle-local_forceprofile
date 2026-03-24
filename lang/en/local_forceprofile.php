@@ -33,3 +33,4 @@ $string['setting_redirecturl'] = 'Redirect URL';
 $string['setting_redirecturl_desc'] = 'The URL where users will be redirected to complete their profile.';
 $string['notification_message'] = 'You must complete your profile before proceeding. Please fill in all required fields.';
 $string['forceprofile:exempt'] = 'Exempt from forced profile completion';
+$string['privacy:metadata'] = 'The Force Profile Completion plugin does not store any personal data.';

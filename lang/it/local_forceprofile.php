@@ -33,3 +33,4 @@ $string['setting_redirecturl'] = 'URL di redirect';
 $string['setting_redirecturl_desc'] = 'L\'URL dove gli utenti verranno reindirizzati per completare il profilo.';
 $string['notification_message'] = 'Per procedere è necessario completare il profilo. Compila tutti i campi obbligatori mancanti.';
 $string['forceprofile:exempt'] = 'Esente dal completamento profilo obbligatorio';
+$string['privacy:metadata'] = 'Il plugin Completamento profilo obbligatorio non memorizza alcun dato personale.';

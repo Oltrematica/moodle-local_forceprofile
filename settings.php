@@ -51,12 +51,13 @@ if ($hassiteconfig) {
         get_string('notification_message', 'local_forceprofile')
     ));
 
-    // Redirect URL.
+    // Redirect URL (must be a local path starting with /).
     $settings->add(new admin_setting_configtext(
         'local_forceprofile/redirecturl',
         get_string('setting_redirecturl', 'local_forceprofile'),
         get_string('setting_redirecturl_desc', 'local_forceprofile'),
-        '/user/edit.php'
+        '/user/edit.php',
+        PARAM_LOCALURL
     ));
 
     $ADMIN->add('localplugins', $settings);

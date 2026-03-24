@@ -28,7 +28,12 @@
  * Forces users with incomplete profile fields to the profile edit page.
  */
 function local_forceprofile_after_require_login() {
-    global $DB, $USER, $PAGE;
+    global $DB, $USER, $PAGE, $SESSION;
+
+    // Skip CLI scripts and AJAX requests.
+    if (CLI_SCRIPT || (defined('AJAX_SCRIPT') && AJAX_SCRIPT)) {
+        return;
+    }
 
     // Plugin enabled?
     if (!get_config('local_forceprofile', 'enabled')) {
@@ -45,16 +50,34 @@ function local_forceprofile_after_require_login() {
         return;
     }
 
-    // Avoid redirect loops: allow profile edit, logout, and password change pages.
-    $currenturl = $PAGE->url->get_path();
+    // Use session cache to avoid DB query on every page load.
+    // Cache is invalidated when the user visits the profile edit page.
+    if (!empty($SESSION->local_forceprofile_complete)) {
+        return;
+    }
+
+    // Determine current URL safely ($PAGE->url may not be set yet).
+    try {
+        $currenturl = $PAGE->url->get_path();
+    } catch (\Throwable $e) {
+        $currenturl = me();
+    }
+
+    // Avoid redirect loops: allow profile edit, logout, password change, and AJAX endpoints.
     $allowedpaths = [
         '/user/edit.php',
         '/user/editadvanced.php',
         '/login/logout.php',
         '/login/change_password.php',
+        '/lib/ajax/service.php',
+        '/lib/ajax/service-nologin.php',
     ];
     foreach ($allowedpaths as $path) {
-        if (strpos($currenturl, $path) !== false) {
+        if ($currenturl === $path) {
+            // Invalidate cache when user visits profile edit page (they may have just saved).
+            if ($path === '/user/edit.php' || $path === '/user/editadvanced.php') {
+                unset($SESSION->local_forceprofile_complete);
+            }
             return;
         }
     }
@@ -71,6 +94,7 @@ function local_forceprofile_after_require_login() {
 
     // Check if any required field is empty.
     if (!local_forceprofile_has_incomplete_fields($USER->id, $shortnames)) {
+        $SESSION->local_forceprofile_complete = true;
         return;
     }
 
@@ -79,10 +103,10 @@ function local_forceprofile_after_require_login() {
     if (empty($message)) {
         $message = get_string('notification_message', 'local_forceprofile');
     }
-    \core\notification::warning($message);
+    \core\notification::warning(format_string($message));
 
     $redirecturl = get_config('local_forceprofile', 'redirecturl');
-    if (empty($redirecturl)) {
+    if (empty($redirecturl) || !str_starts_with($redirecturl, '/')) {
         $redirecturl = '/user/edit.php';
     }
     $url = new \moodle_url($redirecturl, ['id' => $USER->id]);
@@ -92,9 +116,12 @@ function local_forceprofile_after_require_login() {
 /**
  * Check if a user has any incomplete profile fields.
  *
+ * Only checks fields that actually exist in user_info_field.
+ * Non-existent shortnames are silently skipped (logged as debug notice).
+ *
  * @param int $userid The user ID to check.
  * @param array $shortnames Array of field shortnames to verify.
- * @return bool True if at least one field is empty or missing.
+ * @return bool True if at least one existing field is empty or missing.
  */
 function local_forceprofile_has_incomplete_fields(int $userid, array $shortnames): bool {
     global $DB;
@@ -114,12 +141,20 @@ function local_forceprofile_has_incomplete_fields(int $userid, array $shortnames
 
     $records = $DB->get_records_sql($sql, $params);
 
-    // If we got fewer records than shortnames, some fields don't exist — treat as incomplete.
-    if (count($records) < count($shortnames)) {
-        return true;
+    // Log warning for non-existent field shortnames (misconfiguration).
+    $foundshortnames = array_keys($records);
+    $missing = array_diff($shortnames, $foundshortnames);
+    if (!empty($missing)) {
+        debugging('local_forceprofile: configured field shortnames not found in user_info_field: ' .
+            implode(', ', $missing), DEBUG_DEVELOPER);
     }
 
-    // Check each field value.
+    // If no configured fields exist at all, nothing to enforce.
+    if (empty($records)) {
+        return false;
+    }
+
+    // Check each existing field value.
     foreach ($records as $record) {
         if (!isset($record->data) || $record->data === '' || $record->data === null) {
             return true;
