@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release zip
+        run: |
+          mkdir -p forceprofile
+          rsync -a --exclude='.git' --exclude='.github' --exclude='forceprofile' . forceprofile/
+          zip -r "moodle-local_forceprofile-${{ steps.version.outputs.tag }}.zip" forceprofile/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: moodle-local_forceprofile-${{ steps.version.outputs.tag }}.zip
+          generate_release_notes: true
