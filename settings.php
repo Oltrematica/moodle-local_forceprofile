@@ -32,7 +32,7 @@ if ($hassiteconfig) {
         'local_forceprofile/enabled',
         get_string('setting_enabled', 'local_forceprofile'),
         get_string('setting_enabled_desc', 'local_forceprofile'),
-        1
+        0
     ));
 
     // Fields to check (shortnames, one per line).
@@ -40,7 +40,7 @@ if ($hassiteconfig) {
         'local_forceprofile/fields',
         get_string('setting_fields', 'local_forceprofile'),
         get_string('setting_fields_desc', 'local_forceprofile'),
-        "CF\nprofessione\ndisciplina"
+        ''
     ));
 
     // Custom message.

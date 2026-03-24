@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Force Profile Completion — Moodle Plugin</title>
+    <meta name="description" content="A Moodle local plugin that forces users to complete their profile before navigating the site. Works with any custom profile field.">
+    <style>
+        /* ── Reset & Base ── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --color-bg: #0f1117;
+            --color-surface: #161a24;
+            --color-surface-2: #1c2130;
+            --color-border: #2a2f3e;
+            --color-text: #e1e4ed;
+            --color-text-muted: #8b90a0;
+            --color-accent: #f7931a;
+            --color-accent-soft: rgba(247, 147, 26, 0.12);
+            --color-green: #34d399;
+            --color-green-soft: rgba(52, 211, 153, 0.12);
+            --color-blue: #60a5fa;
+            --color-blue-soft: rgba(96, 165, 250, 0.12);
+            --color-red: #f87171;
+            --color-purple: #a78bfa;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+            --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            --max-width: 860px;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--color-bg);
+            color: var(--color-text);
+            line-height: 1.7;
+            font-size: 16px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Layout ── */
+        .container { max-width: var(--max-width); margin: 0 auto; padding: 0 24px; }
+
+        /* ── Hero ── */
+        .hero {
+            padding: 80px 0 60px;
+            text-align: center;
+            position: relative;
+        }
+        .hero::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+        }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            background: var(--color-accent-soft);
+            border: 1px solid rgba(247, 147, 26, 0.25);
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-accent);
+            letter-spacing: 0.02em;
+            margin-bottom: 24px;
+        }
+        .hero h1 {
+            font-size: clamp(2rem, 5vw, 3rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            margin-bottom: 16px;
+        }
+        .hero h1 span { color: var(--color-accent); }
+        .hero p {
+            font-size: 18px;
+            color: var(--color-text-muted);
+            max-width: 560px;
+            margin: 0 auto 32px;
+        }
+        .hero-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: var(--radius-sm);
+            font-size: 15px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: var(--color-accent);
+            color: #000;
+        }
+        .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+        .btn-secondary {
+            background: var(--color-surface-2);
+            color: var(--color-text);
+            border: 1px solid var(--color-border);
+        }
+        .btn-secondary:hover { border-color: var(--color-text-muted); }
+
+        /* ── Badges row ── */
+        .badges {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+        }
+        .badges img { height: 22px; }
+
+        /* ── Sections ── */
+        section { padding: 60px 0; }
+        section + section { border-top: 1px solid var(--color-border); }
+
+        h2 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+        }
+        h3 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin: 32px 0 12px;
+        }
+        p { margin-bottom: 16px; }
+        p.subtitle { color: var(--color-text-muted); margin-bottom: 32px; }
+
+        /* ── Flow Diagram ── */
+        .flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            margin: 32px 0;
+            flex-wrap: wrap;
+        }
+        .flow-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 20px 16px;
+            min-width: 140px;
+        }
+        .flow-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+        .flow-icon.orange { background: var(--color-accent-soft); }
+        .flow-icon.blue { background: var(--color-blue-soft); }
+        .flow-icon.green { background: var(--color-green-soft); }
+        .flow-label {
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+        }
+        .flow-desc {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            text-align: center;
+        }
+        .flow-arrow {
+            font-size: 20px;
+            color: var(--color-text-muted);
+            padding: 0 4px;
+        }
+
+        /* ── Cards ── */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin: 24px 0;
+        }
+        .card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            padding: 24px;
+            transition: border-color 0.2s;
+        }
+        .card:hover { border-color: var(--color-accent); }
+        .card-icon {
+            font-size: 28px;
+            margin-bottom: 12px;
+        }
+        .card h4 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .card p {
+            font-size: 14px;
+            color: var(--color-text-muted);
+            margin: 0;
+        }
+
+        /* ── Code Blocks ── */
+        pre {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            padding: 20px 24px;
+            overflow-x: auto;
+            margin: 16px 0 24px;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        code {
+            font-family: var(--font-mono);
+            font-size: 0.9em;
+        }
+        p code, li code, td code {
+            background: var(--color-surface-2);
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-size: 13px;
+            border: 1px solid var(--color-border);
+        }
+
+        /* ── Tables ── */
+        .table-wrap {
+            overflow-x: auto;
+            margin: 16px 0 24px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th {
+            text-align: left;
+            padding: 12px 16px;
+            background: var(--color-surface);
+            border-bottom: 2px solid var(--color-border);
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--color-text-muted);
+        }
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--color-border);
+        }
+        tr:last-child td { border-bottom: none; }
+
+        /* ── Config Steps ── */
+        .steps {
+            counter-reset: step;
+            list-style: none;
+            margin: 24px 0;
+        }
+        .steps li {
+            counter-increment: step;
+            position: relative;
+            padding-left: 48px;
+            margin-bottom: 20px;
+        }
+        .steps li::before {
+            content: counter(step);
+            position: absolute;
+            left: 0;
+            top: 2px;
+            width: 32px;
+            height: 32px;
+            background: var(--color-accent-soft);
+            color: var(--color-accent);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .steps li strong { display: block; margin-bottom: 4px; }
+        .steps li span { font-size: 14px; color: var(--color-text-muted); }
+
+        /* ── Tree ── */
+        .tree {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            padding: 24px;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            line-height: 1.8;
+            margin: 16px 0 24px;
+        }
+        .tree .file { color: var(--color-blue); }
+        .tree .desc { color: var(--color-text-muted); }
+
+        /* ── Alert Box ── */
+        .alert {
+            background: var(--color-accent-soft);
+            border: 1px solid rgba(247, 147, 26, 0.25);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            margin: 24px 0;
+            font-size: 14px;
+        }
+        .alert strong { color: var(--color-accent); }
+
+        /* ── Footer ── */
+        footer {
+            padding: 40px 0;
+            border-top: 1px solid var(--color-border);
+            text-align: center;
+            color: var(--color-text-muted);
+            font-size: 14px;
+        }
+        footer a { color: var(--color-accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        /* ── Utility ── */
+        ul, ol { margin: 12px 0 24px 24px; }
+        li { margin-bottom: 6px; }
+        a { color: var(--color-accent); }
+
+        /* ── Responsive ── */
+        @media (max-width: 600px) {
+            .hero { padding: 48px 0 40px; }
+            section { padding: 40px 0; }
+            .flow { flex-direction: column; }
+            .flow-arrow { transform: rotate(90deg); }
+            .card-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ══════════════════ HERO ══════════════════ -->
+<header class="hero">
+    <div class="container">
+        <div class="hero-badge">Moodle Local Plugin</div>
+        <h1>Force <span>Profile</span> Completion</h1>
+        <p>Ensure every user completes their profile before accessing the platform. Works with any custom profile field.</p>
+        <div class="badges">
+            <img src="https://img.shields.io/badge/Moodle-4.5%2B-orange?style=flat-square" alt="Moodle 4.5+">
+            <img src="https://img.shields.io/badge/PHP-8.1%2B-blue?style=flat-square" alt="PHP 8.1+">
+            <img src="https://img.shields.io/badge/License-GPLv3-green?style=flat-square" alt="GPL v3">
+        </div>
+        <div class="hero-actions">
+            <a href="https://github.com/Oltrematica/moodle-local_forceprofile/releases" class="btn btn-primary">
+                Download Latest Release
+            </a>
+            <a href="https://github.com/Oltrematica/moodle-local_forceprofile" class="btn btn-secondary">
+                View on GitHub
+            </a>
+        </div>
+    </div>
+</header>
+
+<main class="container">
+
+<!-- ══════════════════ THE PROBLEM ══════════════════ -->
+<section>
+    <h2>The Problem</h2>
+    <p class="subtitle">Moodle doesn't natively support a "complete your profile" gate for custom fields.</p>
+
+    <div class="card-grid">
+        <div class="card">
+            <div class="card-icon">&#128100;</div>
+            <h4>Admin creates users manually</h4>
+            <p>Often with only name, email, and password &mdash; missing important custom fields.</p>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#128683;</div>
+            <h4>"Required" blocks admins</h4>
+            <p>Making fields required prevents admins from creating accounts without that data.</p>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#9888;&#65039;</div>
+            <h4>Users ignore optional fields</h4>
+            <p>Without enforcement, users never fill in their profile &mdash; data stays incomplete forever.</p>
+        </div>
+    </div>
+
+    <div class="alert">
+        <strong>This plugin solves the gap:</strong> Admins can create accounts freely, and users are forced to complete their profile at first login.
+    </div>
+</section>
+
+<!-- ══════════════════ HOW IT WORKS ══════════════════ -->
+<section>
+    <h2>How It Works</h2>
+    <p class="subtitle">A seamless two-step flow: admin creates, user completes.</p>
+
+    <div class="flow">
+        <div class="flow-step">
+            <div class="flow-icon orange">&#128221;</div>
+            <div class="flow-label">Admin creates user</div>
+            <div class="flow-desc">Minimal data only</div>
+        </div>
+        <div class="flow-arrow">&#10132;</div>
+        <div class="flow-step">
+            <div class="flow-icon blue">&#128274;</div>
+            <div class="flow-label">User logs in</div>
+            <div class="flow-desc">Plugin intercepts every page</div>
+        </div>
+        <div class="flow-arrow">&#10132;</div>
+        <div class="flow-step">
+            <div class="flow-icon orange">&#9997;&#65039;</div>
+            <div class="flow-label">Fill profile fields</div>
+            <div class="flow-desc">Redirect until complete</div>
+        </div>
+        <div class="flow-arrow">&#10132;</div>
+        <div class="flow-step">
+            <div class="flow-icon green">&#10003;</div>
+            <div class="flow-label">Access granted</div>
+            <div class="flow-desc">Normal navigation</div>
+        </div>
+    </div>
+
+    <p>The plugin hooks into Moodle's <code>after_require_login</code> callback, which fires on <strong>every protected page load</strong>. Users cannot bypass the check by navigating directly to any URL.</p>
+</section>
+
+<!-- ══════════════════ INSTALLATION ══════════════════ -->
+<section>
+    <h2>Installation</h2>
+    <p class="subtitle">Two ways to install &mdash; pick your favorite.</p>
+
+    <h3>Option A &mdash; Git clone</h3>
+    <pre>cd /path/to/moodle/local
+git clone https://github.com/Oltrematica/moodle-local_forceprofile.git forceprofile</pre>
+
+    <h3>Option B &mdash; Download ZIP</h3>
+    <p>Download the latest <code>.zip</code> from <a href="https://github.com/Oltrematica/moodle-local_forceprofile/releases">GitHub Releases</a> and extract into <code>local/forceprofile/</code>.</p>
+
+    <h3>Finalize</h3>
+    <ol class="steps">
+        <li>
+            <strong>Trigger installation</strong>
+            <span>Go to <b>Site administration &rarr; Notifications</b> &mdash; Moodle detects the new plugin automatically.</span>
+        </li>
+        <li>
+            <strong>Configure the plugin</strong>
+            <span>Navigate to <b>Site administration &rarr; Plugins &rarr; Local plugins &rarr; Force Profile Completion</b>.</span>
+        </li>
+        <li>
+            <strong>Add your field shortnames</strong>
+            <span>Enter one shortname per line for the custom profile fields you want to enforce.</span>
+        </li>
+        <li>
+            <strong>Enable the plugin</strong>
+            <span>Flip the toggle to activate enforcement.</span>
+        </li>
+    </ol>
+</section>
+
+<!-- ══════════════════ CONFIGURATION ══════════════════ -->
+<section>
+    <h2>Configuration</h2>
+    <p class="subtitle">Everything is managed from the admin settings panel.</p>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Setting</th>
+                    <th>Description</th>
+                    <th>Default</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Enable</strong></td>
+                    <td>Activate or deactivate the plugin</td>
+                    <td>Disabled</td>
+                </tr>
+                <tr>
+                    <td><strong>Fields to check</strong></td>
+                    <td>Custom profile field shortnames, one per line</td>
+                    <td><em>(empty)</em></td>
+                </tr>
+                <tr>
+                    <td><strong>Message</strong></td>
+                    <td>Warning message shown to users on redirect</td>
+                    <td><em>"You must complete your profile&hellip;"</em></td>
+                </tr>
+                <tr>
+                    <td><strong>Redirect URL</strong></td>
+                    <td>Local path where users complete their profile</td>
+                    <td><code>/user/edit.php</code></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3>Recommended profile field settings</h3>
+    <p>For the fields you want to enforce, configure them in <strong>Site administration &rarr; Users &rarr; User profile fields</strong>:</p>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Setting</th>
+                    <th>Value</th>
+                    <th>Why</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Required</td>
+                    <td><strong>No</strong></td>
+                    <td>So admins aren't blocked when creating users</td>
+                </tr>
+                <tr>
+                    <td>Locked</td>
+                    <td><strong>No</strong></td>
+                    <td>So users can fill them in themselves</td>
+                </tr>
+                <tr>
+                    <td>Unique</td>
+                    <td><strong>No</strong></td>
+                    <td>So empty values don't conflict across users</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ══════════════════ CAPABILITY ══════════════════ -->
+<section>
+    <h2>Capability &amp; Permissions</h2>
+    <p class="subtitle">Control who is exempt from the profile completion check.</p>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Capability</th>
+                    <th>Description</th>
+                    <th>Default Roles</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>local/forceprofile:exempt</code></td>
+                    <td>Exempt from forced profile completion</td>
+                    <td>Manager, Editing Teacher</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p><strong>Site administrators are always exempt</strong> &mdash; they have all capabilities by default. You can assign this capability to additional roles via <strong>Site administration &rarr; Users &rarr; Permissions &rarr; Define roles</strong>.</p>
+</section>
+
+<!-- ══════════════════ TECHNICAL ══════════════════ -->
+<section>
+    <h2>Under the Hood</h2>
+    <p class="subtitle">Security, performance, and architecture details.</p>
+
+    <div class="card-grid">
+        <div class="card">
+            <div class="card-icon">&#9889;</div>
+            <h4>Session Caching</h4>
+            <p>Once complete, results are cached in <code>$SESSION</code>. No DB queries until the user edits their profile again.</p>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#128737;</div>
+            <h4>SQL Injection Safe</h4>
+            <p>All queries use Moodle's parameterized API (<code>$DB->get_in_or_equal</code>). No raw SQL.</p>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#128272;</div>
+            <h4>XSS Protected</h4>
+            <p>Custom messages are sanitized via <code>format_string()</code> before rendering.</p>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#128279;</div>
+            <h4>Open Redirect Safe</h4>
+            <p>Redirect URL validated as a local path (<code>PARAM_LOCALURL</code>). External URLs rejected.</p>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#128736;</div>
+            <h4>Typo Resilient</h4>
+            <p>Non-existent shortnames are skipped with a <code>DEBUG_DEVELOPER</code> notice. No redirect loops from misconfig.</p>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#127760;</div>
+            <h4>GDPR Compliant</h4>
+            <p>No personal data stored. Includes a null privacy provider for Moodle's privacy API.</p>
+        </div>
+    </div>
+
+    <h3>Pages Excluded from Redirect</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Path</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td><code>/user/edit.php</code></td><td>Profile edit &mdash; where users fill in fields</td></tr>
+                <tr><td><code>/user/editadvanced.php</code></td><td>Advanced profile edit</td></tr>
+                <tr><td><code>/login/logout.php</code></td><td>Users must always be able to log out</td></tr>
+                <tr><td><code>/login/change_password.php</code></td><td>Password change flow</td></tr>
+                <tr><td><code>/lib/ajax/service.php</code></td><td>AJAX web services</td></tr>
+                <tr><td><code>/lib/ajax/service-nologin.php</code></td><td>AJAX (no login)</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p>CLI scripts and AJAX requests are also excluded to prevent breaking background processes.</p>
+
+    <h3>Plugin Structure</h3>
+    <div class="tree">
+        <span class="desc">local/forceprofile/</span><br>
+        ├── <span class="file">version.php</span> <span class="desc">&mdash; Plugin metadata</span><br>
+        ├── <span class="file">settings.php</span> <span class="desc">&mdash; Admin settings page</span><br>
+        ├── <span class="file">lib.php</span> <span class="desc">&mdash; Core logic (after_require_login callback)</span><br>
+        ├── db/<br>
+        │&nbsp;&nbsp; └── <span class="file">access.php</span> <span class="desc">&mdash; Capability definition</span><br>
+        ├── classes/<br>
+        │&nbsp;&nbsp; └── privacy/<br>
+        │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └── <span class="file">provider.php</span> <span class="desc">&mdash; GDPR null provider</span><br>
+        └── lang/<br>
+        &nbsp;&nbsp;&nbsp; ├── en/<span class="file">local_forceprofile.php</span><br>
+        &nbsp;&nbsp;&nbsp; └── it/<span class="file">local_forceprofile.php</span>
+    </div>
+</section>
+
+</main>
+
+<!-- ══════════════════ FOOTER ══════════════════ -->
+<footer>
+    <div class="container">
+        <p>
+            <strong>Force Profile Completion</strong> &mdash; a <a href="https://www.oltrematica.com">Oltrematica</a> open-source project<br>
+            Licensed under <a href="https://www.gnu.org/licenses/gpl-3.0.html">GNU GPL v3</a> &middot;
+            <a href="https://github.com/Oltrematica/moodle-local_forceprofile">GitHub</a>
+        </p>
+    </div>
+</footer>
+
+</body>
+</html>
