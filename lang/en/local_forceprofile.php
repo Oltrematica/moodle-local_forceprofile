@@ -22,15 +22,43 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+// Plugin.
 $string['pluginname'] = 'Force Profile Completion';
+
+// Settings.
 $string['setting_enabled'] = 'Enable profile completion check';
 $string['setting_enabled_desc'] = 'When enabled, users with incomplete profile fields will be redirected to their profile edit page.';
 $string['setting_fields'] = 'Fields to check (shortnames, one per line)';
 $string['setting_fields_desc'] = 'Enter the shortnames of the custom profile fields to check, one per line.';
+$string['setting_validation'] = 'Field validation patterns';
+$string['setting_validation_desc'] = 'Optional regex validation for fields. One per line, format: <code>shortname:/pattern/</code><br>Example: <code>tax_code:/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/i</code>';
 $string['setting_message'] = 'Message to show to the user';
 $string['setting_message_desc'] = 'Warning message displayed when a user is redirected to complete their profile.';
 $string['setting_redirecturl'] = 'Redirect URL';
 $string['setting_redirecturl_desc'] = 'The URL where users will be redirected to complete their profile.';
+
+// Notification.
 $string['notification_message'] = 'You must complete your profile before proceeding. Please fill in all required fields.';
+
+// Capabilities.
 $string['forceprofile:exempt'] = 'Exempt from forced profile completion';
-$string['privacy:metadata'] = 'The Force Profile Completion plugin does not store any personal data.';
+$string['forceprofile:viewstatus'] = 'View profile completion status page';
+
+// Privacy.
+$string['privacy:metadata'] = 'The Force Profile Completion plugin stores the timestamp of when a user completed their required profile fields.';
+$string['privacy:metadata:userid'] = 'The ID of the user who completed their profile.';
+$string['privacy:metadata:timecompleted'] = 'The timestamp when the user completed all required profile fields.';
+
+// Events.
+$string['event_profile_blocked'] = 'User blocked for incomplete profile';
+$string['event_profile_completed'] = 'User completed required profile fields';
+
+// Status page.
+$string['status_title'] = 'Profile Completion Status';
+$string['status_nofields'] = 'No fields configured. Go to plugin settings to add field shortnames.';
+$string['status_total_users'] = 'total users';
+$string['status_incomplete'] = 'incomplete';
+$string['status_complete'] = 'complete';
+$string['status_allusers_complete'] = 'All users have completed their profile fields.';
+$string['status_missing_fields'] = 'Missing fields';
+$string['status_view_profile'] = 'View';

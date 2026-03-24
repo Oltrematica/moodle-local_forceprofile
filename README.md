@@ -39,7 +39,7 @@ Admin creates user          User logs in             Profile complete?
                             User fills in fields → ✓
 ```
 
-The plugin hooks into Moodle's `after_require_login` callback, which fires on **every protected page load**. This ensures users cannot bypass the check by navigating directly to any URL.
+The plugin hooks into Moodle's `after_require_login` callback, which fires on **every protected page load**. Users cannot bypass the check by navigating directly to any URL.
 
 ### On each page load, the plugin:
 
@@ -49,9 +49,27 @@ The plugin hooks into Moodle's `after_require_login` callback, which fires on **
 4. Skips allowed pages (profile edit, logout, password change)
 5. Checks session cache — if profile was already confirmed complete, no DB query is needed
 6. Queries the database for the configured custom profile fields
-7. If any field is empty or missing → redirects to the profile edit page with a warning
+7. Validates field values against optional regex patterns
+8. If any field is empty, missing, or invalid → redirects to the profile edit page with a warning
+9. Fires a `profile_blocked` event for logging
 
-The user **cannot navigate anywhere else** until all configured fields are filled in.
+When the user completes all fields, the plugin:
+- Caches the result in the session (no more DB queries)
+- Records the completion timestamp in `local_forceprofile_compl`
+- Fires a `profile_completed` event
+
+---
+
+## Features
+
+- **Any custom field** — configure which profile fields to enforce via shortnames
+- **Regex validation** — optional pattern validation per field (e.g., tax code format)
+- **Admin status page** — dashboard showing users with incomplete profiles
+- **Event logging** — `profile_blocked` and `profile_completed` events in Moodle logs
+- **Completion tracking** — stores when each user completed their profile
+- **Session caching** — minimal DB overhead after first check
+- **GDPR compliant** — full privacy provider with export/delete support
+- **Bilingual** — English and Italian language packs included
 
 ---
 
@@ -94,18 +112,22 @@ Navigate to **Site administration → Plugins → Local plugins → Force Profil
 |---------|-------------|---------|
 | **Enable** | Activate or deactivate the plugin | Disabled |
 | **Fields to check** | Custom profile field shortnames, one per line | *(empty)* |
-| **Message** | Warning message shown when the user is redirected | *"You must complete your profile before proceeding..."* |
+| **Validation patterns** | Optional regex per field: `shortname:/pattern/` one per line | *(empty)* |
+| **Message** | Warning message shown when the user is redirected | *"You must complete your profile..."* |
 | **Redirect URL** | Local path where users are sent to complete their profile | `/user/edit.php` |
 
-### Setup steps
+### Validation patterns example
 
-1. **Enable** the plugin
-2. **Add your field shortnames** — enter the `shortname` of each custom profile field you want to enforce, one per line
-3. Optionally customize the **message** and **redirect URL**
+```
+CF:/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/i
+phone:/^\+?[0-9]{8,15}$/
+```
+
+Each line is `shortname:/regex/`. Fields without a pattern only need to be non-empty. Fields with a pattern must also match the regex.
 
 ### Recommended profile field settings
 
-For best results, configure the custom profile fields you're enforcing as follows in **Site administration → Users → User profile fields**:
+For the fields you want to enforce, configure them in **Site administration → Users → User profile fields**:
 
 | Setting | Recommended value | Why |
 |---------|-------------------|-----|
@@ -113,36 +135,59 @@ For best results, configure the custom profile fields you're enforcing as follow
 | Locked | **No** | So users can fill them in |
 | Unique | **No** | So empty values don't conflict across users |
 
-The plugin handles enforcement — you don't need Moodle's native "required" mechanism for these fields.
+---
+
+## Admin Status Page
+
+Navigate to **Site administration → Plugins → Local plugins → Profile Completion Status**.
+
+The status page shows:
+- **Summary counters** — total users, incomplete, complete
+- **User table** — username, full name, email, missing fields (as badges), last access
+- **Actions** — link to view profile and edit profile for each user
+- **Pagination** — for large user bases
+
+Requires the `local/forceprofile:viewstatus` capability (default: manager role).
 
 ---
 
-## Capability
+## Event Logging
+
+The plugin fires two custom events, visible in **Site administration → Reports → Logs**:
+
+| Event | When | Data |
+|-------|------|------|
+| `\local_forceprofile\event\profile_blocked` | User is redirected | User ID, list of incomplete fields |
+| `\local_forceprofile\event\profile_completed` | User completes all fields | User ID, completion record ID |
+
+These events can be used for:
+- Monitoring how many users are being blocked
+- Triggering external integrations via event observers
+- Auditing when users completed their profiles
+
+---
+
+## Completion Tracking
+
+When a user fills in all required fields and passes validation, the plugin stores a record in the `local_forceprofile_compl` table:
+
+| Column | Description |
+|--------|-------------|
+| `userid` | The user who completed the profile (unique) |
+| `timecompleted` | Unix timestamp of completion |
+
+This data can be queried for reports or exported via the Moodle privacy API.
+
+---
+
+## Capabilities
 
 | Capability | Description | Default roles |
 |-----------|-------------|---------------|
 | `local/forceprofile:exempt` | Exempt from forced profile completion | `manager`, `editingteacher` |
+| `local/forceprofile:viewstatus` | Access the status page | `manager` |
 
 **Site administrators are always exempt** (they have all capabilities by default).
-
-Assign this capability to additional roles via **Site administration → Users → Permissions → Define roles**.
-
----
-
-## Example Use Case
-
-A healthcare training platform needs every user to have a **tax code**, **profession**, and **discipline** on file. Admins batch-create accounts with just name and email. At first login, each user sees:
-
-> You must complete your profile before proceeding. Please fill in all required fields.
-
-They fill in the three fields, save, and proceed normally. Simple.
-
-Configuration:
-```
-tax_code
-profession
-discipline
-```
 
 ---
 
@@ -150,17 +195,25 @@ discipline
 
 ```
 local/forceprofile/
-├── version.php                     Plugin metadata
-├── settings.php                    Admin settings page
-├── lib.php                         Core logic (after_require_login callback)
+├── version.php                          Plugin metadata
+├── settings.php                         Admin settings + external page registration
+├── lib.php                              Core logic: callback, validation, completion
+├── status.php                           Admin status page
 ├── db/
-│   └── access.php                  Capability definition
+│   ├── access.php                       Capability definitions
+│   ├── install.xml                      Database schema
+│   └── upgrade.php                      Upgrade steps
 ├── classes/
+│   ├── event/
+│   │   ├── profile_blocked.php          Event: user blocked
+│   │   └── profile_completed.php        Event: user completed profile
 │   └── privacy/
-│       └── provider.php            GDPR privacy provider (no data stored)
+│       └── provider.php                 GDPR privacy provider
+├── tests/
+│   └── lib_test.php                     PHPUnit tests
 └── lang/
-    ├── en/local_forceprofile.php   English strings
-    └── it/local_forceprofile.php   Italian strings
+    ├── en/local_forceprofile.php         English strings
+    └── it/local_forceprofile.php         Italian strings
 ```
 
 ---
@@ -169,18 +222,17 @@ local/forceprofile/
 
 ### Performance
 
-The profile completeness check is **cached in `$SESSION`**. Once a user's profile is confirmed complete, no further database queries are made for the rest of their session. The cache is invalidated when the user visits the profile edit page, so changes take effect immediately.
+The profile check is **cached in `$SESSION`**. Once confirmed complete, no further DB queries are made for the session. The cache is invalidated when the user visits the profile edit page.
 
 ### Security
 
-- **SQL injection protection** — all queries use Moodle's Data Manipulation API with parameterized queries (`$DB->get_in_or_equal`)
-- **XSS protection** — the notification message is sanitized via `format_string()`
-- **Open redirect protection** — the redirect URL is validated as a local path (`PARAM_LOCALURL`)
-- **Misconfiguration safety** — non-existent field shortnames are silently skipped with a `DEBUG_DEVELOPER` notice (no redirect loops from typos)
+- **SQL injection safe** — all queries use Moodle's parameterized API
+- **XSS protected** — messages sanitized via `format_string()`
+- **Open redirect safe** — redirect URL validated as `PARAM_LOCALURL`
+- **Typo resilient** — non-existent shortnames skipped with `DEBUG_DEVELOPER` notice
+- **Invalid regex safe** — broken patterns are skipped and logged
 
 ### Pages excluded from redirect
-
-These pages are always accessible, even with an incomplete profile:
 
 | Path | Reason |
 |------|--------|
@@ -191,11 +243,34 @@ These pages are always accessible, even with an incomplete profile:
 | `/lib/ajax/service.php` | AJAX web services |
 | `/lib/ajax/service-nologin.php` | AJAX (no login) |
 
-CLI scripts and AJAX requests are also excluded to prevent breaking background processes and JavaScript functionality.
+CLI scripts and AJAX requests are also excluded.
 
-### Privacy
+---
 
-This plugin **does not store any personal data**. It only reads existing custom profile field values to determine completeness. A GDPR-compliant `null_provider` is included.
+## Testing
+
+The plugin includes PHPUnit tests covering:
+
+- Complete/incomplete field detection
+- Missing data records
+- Non-existent shortname handling
+- Regex validation (pass/fail)
+- Validation pattern parsing
+- Invalid regex handling
+- Completion timestamp recording
+- Event firing (profile_completed on first completion only)
+
+Run tests (from Moodle root):
+
+```bash
+php vendor/bin/phpunit --testsuite local_forceprofile_testsuite
+```
+
+Or directly:
+
+```bash
+php vendor/bin/phpunit local/forceprofile/tests/lib_test.php
+```
 
 ---
 

@@ -43,6 +43,14 @@ if ($hassiteconfig) {
         ''
     ));
 
+    // Validation patterns (shortname:regex per line).
+    $settings->add(new admin_setting_configtextarea(
+        'local_forceprofile/validation',
+        get_string('setting_validation', 'local_forceprofile'),
+        get_string('setting_validation_desc', 'local_forceprofile'),
+        ''
+    ));
+
     // Custom message.
     $settings->add(new admin_setting_configtextarea(
         'local_forceprofile/message',
@@ -61,4 +69,12 @@ if ($hassiteconfig) {
     ));
 
     $ADMIN->add('localplugins', $settings);
+
+    // Status page (external page).
+    $ADMIN->add('localplugins', new admin_externalpage(
+        'local_forceprofile_status',
+        get_string('status_title', 'local_forceprofile'),
+        new moodle_url('/local/forceprofile/status.php'),
+        'local/forceprofile:viewstatus'
+    ));
 }

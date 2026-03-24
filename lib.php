@@ -92,11 +92,24 @@ function local_forceprofile_after_require_login() {
         return;
     }
 
-    // Check if any required field is empty.
-    if (!local_forceprofile_has_incomplete_fields($USER->id, $shortnames)) {
+    // Load validation patterns.
+    $patterns = local_forceprofile_get_validation_patterns();
+
+    // Check if any required field is empty or invalid.
+    $incompletefields = local_forceprofile_get_incomplete_fields($USER->id, $shortnames, $patterns);
+    if (empty($incompletefields)) {
+        // Profile is complete — cache result and record completion.
         $SESSION->local_forceprofile_complete = true;
+        local_forceprofile_record_completion($USER->id);
         return;
     }
+
+    // Fire the profile_blocked event.
+    $event = \local_forceprofile\event\profile_blocked::create([
+        'userid' => $USER->id,
+        'other' => ['fields' => implode(', ', $incompletefields)],
+    ]);
+    $event->trigger();
 
     // Redirect to profile edit page with warning.
     $message = get_config('local_forceprofile', 'message');
@@ -114,20 +127,18 @@ function local_forceprofile_after_require_login() {
 }
 
 /**
- * Check if a user has any incomplete profile fields.
- *
- * Only checks fields that actually exist in user_info_field.
- * Non-existent shortnames are silently skipped (logged as debug notice).
+ * Get the list of incomplete or invalid fields for a user.
  *
  * @param int $userid The user ID to check.
  * @param array $shortnames Array of field shortnames to verify.
- * @return bool True if at least one existing field is empty or missing.
+ * @param array $patterns Associative array of shortname => regex pattern for validation.
+ * @return array List of shortnames that are empty or fail validation.
  */
-function local_forceprofile_has_incomplete_fields(int $userid, array $shortnames): bool {
+function local_forceprofile_get_incomplete_fields(int $userid, array $shortnames, array $patterns = []): array {
     global $DB;
 
     if (empty($shortnames)) {
-        return false;
+        return [];
     }
 
     // Build IN clause for shortnames.
@@ -149,17 +160,183 @@ function local_forceprofile_has_incomplete_fields(int $userid, array $shortnames
             implode(', ', $missing), DEBUG_DEVELOPER);
     }
 
-    // If no configured fields exist at all, nothing to enforce.
-    if (empty($records)) {
-        return false;
-    }
+    $incomplete = [];
+    foreach ($records as $shortname => $record) {
+        $value = $record->data ?? '';
 
-    // Check each existing field value.
-    foreach ($records as $record) {
-        if (!isset($record->data) || $record->data === '' || $record->data === null) {
-            return true;
+        // Check empty.
+        if ($value === '' || $value === null) {
+            $incomplete[] = $shortname;
+            continue;
+        }
+
+        // Check regex validation if configured.
+        if (!empty($patterns[$shortname])) {
+            $pattern = $patterns[$shortname];
+            if (@preg_match($pattern, $value) !== 1) {
+                $incomplete[] = $shortname;
+            }
         }
     }
 
-    return false;
+    return $incomplete;
+}
+
+/**
+ * Check if a user has any incomplete profile fields.
+ *
+ * Wrapper around local_forceprofile_get_incomplete_fields for backward compatibility.
+ *
+ * @param int $userid The user ID to check.
+ * @param array $shortnames Array of field shortnames to verify.
+ * @return bool True if at least one existing field is empty or missing.
+ */
+function local_forceprofile_has_incomplete_fields(int $userid, array $shortnames): bool {
+    $patterns = local_forceprofile_get_validation_patterns();
+    return !empty(local_forceprofile_get_incomplete_fields($userid, $shortnames, $patterns));
+}
+
+/**
+ * Parse validation patterns from plugin settings.
+ *
+ * Format: one line per pattern, "shortname:/regex/"
+ *
+ * @return array Associative array of shortname => regex pattern.
+ */
+function local_forceprofile_get_validation_patterns(): array {
+    $setting = get_config('local_forceprofile', 'validation');
+    if (empty($setting)) {
+        return [];
+    }
+
+    $patterns = [];
+    $lines = array_filter(array_map('trim', explode("\n", $setting)));
+    foreach ($lines as $line) {
+        // Split on first colon only.
+        $colonpos = strpos($line, ':');
+        if ($colonpos === false) {
+            continue;
+        }
+        $shortname = trim(substr($line, 0, $colonpos));
+        $pattern = trim(substr($line, $colonpos + 1));
+        if (!empty($shortname) && !empty($pattern)) {
+            // Validate that the regex compiles.
+            if (@preg_match($pattern, '') !== false) {
+                $patterns[$shortname] = $pattern;
+            } else {
+                debugging("local_forceprofile: invalid regex for field '{$shortname}': {$pattern}", DEBUG_DEVELOPER);
+            }
+        }
+    }
+
+    return $patterns;
+}
+
+/**
+ * Record the timestamp when a user completes their profile.
+ *
+ * If already recorded, updates the timestamp.
+ *
+ * @param int $userid The user ID.
+ */
+function local_forceprofile_record_completion(int $userid): void {
+    global $DB;
+
+    $existing = $DB->get_record('local_forceprofile_compl', ['userid' => $userid]);
+    $now = time();
+
+    if ($existing) {
+        $existing->timecompleted = $now;
+        $DB->update_record('local_forceprofile_compl', $existing);
+    } else {
+        $record = new \stdClass();
+        $record->userid = $userid;
+        $record->timecompleted = $now;
+        $completionid = $DB->insert_record('local_forceprofile_compl', $record);
+
+        // Fire the profile_completed event.
+        $event = \local_forceprofile\event\profile_completed::create([
+            'userid' => $userid,
+            'objectid' => $completionid,
+        ]);
+        $event->trigger();
+    }
+}
+
+/**
+ * Get a count of users with incomplete profiles.
+ *
+ * @param array $shortnames Field shortnames to check.
+ * @param array $patterns Validation patterns.
+ * @return array ['total' => int, 'incomplete' => int, 'complete' => int]
+ */
+function local_forceprofile_get_status_counts(array $shortnames, array $patterns = []): array {
+    global $DB;
+
+    if (empty($shortnames)) {
+        return ['total' => 0, 'incomplete' => 0, 'complete' => 0];
+    }
+
+    // Get all non-admin, non-guest, confirmed users.
+    $allusers = $DB->get_records_select('user',
+        "deleted = 0 AND suspended = 0 AND confirmed = 1 AND id > 2",
+        null, '', 'id');
+
+    $incomplete = 0;
+    foreach ($allusers as $user) {
+        if (is_siteadmin($user->id)) {
+            continue;
+        }
+        $fields = local_forceprofile_get_incomplete_fields($user->id, $shortnames, $patterns);
+        if (!empty($fields)) {
+            $incomplete++;
+        }
+    }
+
+    $total = count($allusers);
+    return [
+        'total' => $total,
+        'incomplete' => $incomplete,
+        'complete' => $total - $incomplete,
+    ];
+}
+
+/**
+ * Get list of users with incomplete profiles.
+ *
+ * @param array $shortnames Field shortnames to check.
+ * @param array $patterns Validation patterns.
+ * @param int $page Page number (0-based).
+ * @param int $perpage Results per page.
+ * @return array ['users' => array, 'totalcount' => int]
+ */
+function local_forceprofile_get_incomplete_users(array $shortnames, array $patterns = [],
+        int $page = 0, int $perpage = 50): array {
+    global $DB;
+
+    if (empty($shortnames)) {
+        return ['users' => [], 'totalcount' => 0];
+    }
+
+    // Get all non-admin, non-guest, confirmed users.
+    $allusers = $DB->get_records_select('user',
+        "deleted = 0 AND suspended = 0 AND confirmed = 1 AND id > 2",
+        null, 'lastname, firstname', 'id, username, firstname, lastname, email, lastaccess');
+
+    $incompleteusers = [];
+    foreach ($allusers as $user) {
+        if (is_siteadmin($user->id)) {
+            continue;
+        }
+        $fields = local_forceprofile_get_incomplete_fields($user->id, $shortnames, $patterns);
+        if (!empty($fields)) {
+            $user->incompletefields = $fields;
+            $incompleteusers[] = $user;
+        }
+    }
+
+    $totalcount = count($incompleteusers);
+    $pagedusers = array_slice($incompleteusers, $page * $perpage, $perpage);
+
+    return ['users' => $pagedusers, 'totalcount' => $totalcount];
 }

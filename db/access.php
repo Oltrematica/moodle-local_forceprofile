@@ -33,4 +33,11 @@ $capabilities = [
             'editingteacher' => CAP_ALLOW,
         ],
     ],
+    'local/forceprofile:viewstatus' => [
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+    ],
 ];
