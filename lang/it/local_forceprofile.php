@@ -31,7 +31,11 @@ $string['setting_enabled_desc'] = 'Se abilitato, gli utenti con campi profilo in
 $string['setting_fields'] = 'Campi da controllare (shortname, uno per riga)';
 $string['setting_fields_desc'] = 'Inserisci gli shortname dei campi personalizzati del profilo da controllare, uno per riga.';
 $string['setting_validation'] = 'Pattern di validazione campi';
-$string['setting_validation_desc'] = 'Validazione regex opzionale per i campi. Uno per riga, formato: <code>shortname:/pattern/</code><br>Esempio: <code>CF:/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/i</code>';
+$string['setting_validation_desc'] = 'Validazione regex opzionale per i campi. Uno per riga, formato: <code>shortname:/pattern/</code><br>Esempio: <code>CF:/^[A-Z]{6}[0-9LMNPQRSTUV]{2}[ABCDEHLMPRST][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]$/i</code>';
+$string['setting_validators'] = 'Validatori dei campi';
+$string['setting_validators_desc'] = 'Validatori opzionali per controlli che una espressione regolare non può esprimere, ad esempio un carattere di controllo. Uno per riga, formato: <code>shortname:nomevalidatore</code><br>Esempio: <code>CF:codicefiscale</code><br>Un validatore può essere combinato con un pattern regex sullo stesso campo: il valore deve soddisfare entrambi. Validatori disponibili:';
+$string['setting_signupvalidation'] = 'Valida in autoregistrazione';
+$string['setting_signupvalidation_desc'] = 'Se abilitato, i campi configurati vengono controllati anche nel modulo di autoregistrazione, così non è possibile creare un account con un valore mancante o non valido. Vengono controllati solo i campi pubblicati nel modulo di registrazione.';
 $string['setting_message'] = 'Messaggio da mostrare all\'utente';
 $string['setting_message_desc'] = 'Messaggio di avviso mostrato quando un utente viene reindirizzato per completare il profilo.';
 $string['setting_redirecturl'] = 'URL di redirect';
@@ -39,6 +43,14 @@ $string['setting_redirecturl_desc'] = 'L\'URL dove gli utenti verranno reindiriz
 
 // Notification.
 $string['notification_message'] = 'Per procedere è necessario completare il profilo. Compila tutti i campi obbligatori mancanti.';
+$string['notification_fieldlist'] = 'Campi da correggere:';
+$string['fieldproblem'] = '{$a->field}: {$a->reason}';
+$string['reason_empty'] = 'campo obbligatorio non compilato';
+$string['reason_invalid'] = 'il valore inserito non ha un formato valido';
+
+// Validators.
+$string['validator_codicefiscale'] = 'Codice fiscale italiano';
+$string['error_codicefiscale'] = 'il valore inserito non è un codice fiscale valido — controlla il formato e il carattere di controllo finale';
 
 // Capabilities.
 $string['forceprofile:exempt'] = 'Esente dal completamento profilo obbligatorio';
