@@ -34,7 +34,10 @@ require_once($CFG->dirroot . '/local/forceprofile/lib.php');
  *
  * @covers ::local_forceprofile_has_incomplete_fields
  * @covers ::local_forceprofile_get_incomplete_fields
+ * @covers ::local_forceprofile_get_field_problems
  * @covers ::local_forceprofile_get_validation_patterns
+ * @covers ::local_forceprofile_get_field_validators
+ * @covers ::local_forceprofile_validate_extend_signup_form
  * @covers ::local_forceprofile_record_completion
  */
 class lib_test extends \advanced_testcase {
@@ -354,5 +357,257 @@ class lib_test extends \advanced_testcase {
             }
         }
         $this->assertFalse($found, 'profile_completed event should NOT fire on update');
+    }
+
+    /**
+     * Test: parsing named validators from settings format.
+     */
+    public function test_get_field_validators(): void {
+        $this->resetAfterTest();
+
+        set_config('validators', "CF:codicefiscale\n  taxcode : codicefiscale  ", 'local_forceprofile');
+
+        $validators = local_forceprofile_get_field_validators();
+
+        $this->assertArrayHasKey('CF', $validators);
+        $this->assertArrayHasKey('taxcode', $validators);
+        $this->assertInstanceOf(\local_forceprofile\validator\codicefiscale::class, $validators['CF']);
+        $this->assertInstanceOf(\local_forceprofile\validator\codicefiscale::class, $validators['taxcode']);
+    }
+
+    /**
+     * Test: unknown validator names are skipped instead of breaking the check.
+     */
+    public function test_get_field_validators_unknown_skipped(): void {
+        $this->resetAfterTest();
+
+        set_config('validators', "CF:codicefiscale\nother:doesnotexist", 'local_forceprofile');
+
+        $validators = local_forceprofile_get_field_validators();
+        $this->assertDebuggingCalled();
+
+        $this->assertArrayHasKey('CF', $validators);
+        $this->assertArrayNotHasKey('other', $validators);
+    }
+
+    /**
+     * Test: an empty validators setting yields an empty list.
+     */
+    public function test_get_field_validators_empty(): void {
+        $this->resetAfterTest();
+
+        set_config('validators', '', 'local_forceprofile');
+        $this->assertSame([], local_forceprofile_get_field_validators());
+    }
+
+    /**
+     * Test: a tax code with a wrong check character is flagged as invalid.
+     */
+    public function test_validator_detects_wrong_check_character(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $fieldid = $this->create_profile_field('CF');
+        $this->set_profile_field_data($user->id, $fieldid, 'ADRNLT79P41D969B');
+
+        $validators = ['CF' => new \local_forceprofile\validator\codicefiscale()];
+        $incomplete = local_forceprofile_get_incomplete_fields($user->id, ['CF'], [], $validators);
+
+        $this->assertContains('CF', $incomplete);
+    }
+
+    /**
+     * Test: a valid tax code passes the validator.
+     */
+    public function test_validator_accepts_valid_tax_code(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $fieldid = $this->create_profile_field('CF');
+        $this->set_profile_field_data($user->id, $fieldid, 'BDRNLT79P41D969B');
+
+        $validators = ['CF' => new \local_forceprofile\validator\codicefiscale()];
+        $incomplete = local_forceprofile_get_incomplete_fields($user->id, ['CF'], [], $validators);
+
+        $this->assertEmpty($incomplete);
+    }
+
+    /**
+     * Test: values stored lowercase are normalised before validation.
+     *
+     * Roughly half of the real records are stored lowercase or mixed case.
+     */
+    public function test_validator_normalises_stored_value(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $fieldid = $this->create_profile_field('CF');
+        $this->set_profile_field_data($user->id, $fieldid, ' bdrnlt79p41d969b ');
+
+        $validators = ['CF' => new \local_forceprofile\validator\codicefiscale()];
+        $incomplete = local_forceprofile_get_incomplete_fields($user->id, ['CF'], [], $validators);
+
+        $this->assertEmpty($incomplete);
+    }
+
+    /**
+     * Test: regex and named validator can be combined on the same field.
+     */
+    public function test_regex_and_validator_combined(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $fieldid = $this->create_profile_field('CF');
+        // Formally a tax code, but the check character is wrong.
+        $this->set_profile_field_data($user->id, $fieldid, 'ADRNLT79P41D969B');
+
+        $patterns = ['CF' => '/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/i'];
+        $validators = ['CF' => new \local_forceprofile\validator\codicefiscale()];
+
+        // The regex alone accepts it.
+        $this->assertEmpty(local_forceprofile_get_incomplete_fields($user->id, ['CF'], $patterns));
+        // The validator catches it.
+        $this->assertContains('CF', local_forceprofile_get_incomplete_fields($user->id, ['CF'], $patterns, $validators));
+    }
+
+    /**
+     * Test: field problems distinguish an empty field from an invalid one.
+     */
+    public function test_get_field_problems_reasons(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $cfid = $this->create_profile_field('CF');
+        $this->create_profile_field('profession');
+        $okid = $this->create_profile_field('city');
+
+        $this->set_profile_field_data($user->id, $cfid, 'ADRNLT79P41D969B');
+        $this->set_profile_field_data($user->id, $okid, 'Rimini');
+
+        $validators = ['CF' => new \local_forceprofile\validator\codicefiscale()];
+        $problems = local_forceprofile_get_field_problems(
+            $user->id,
+            ['CF', 'profession', 'city'],
+            [],
+            $validators
+        );
+
+        $this->assertArrayHasKey('CF', $problems);
+        $this->assertArrayHasKey('profession', $problems);
+        $this->assertArrayNotHasKey('city', $problems);
+
+        $this->assertSame(LOCAL_FORCEPROFILE_REASON_INVALID, $problems['CF']->reason);
+        $this->assertSame(LOCAL_FORCEPROFILE_REASON_EMPTY, $problems['profession']->reason);
+
+        // The message must name the field so the user knows what to fix.
+        $this->assertStringContainsString('CF', $problems['CF']->message);
+        $this->assertNotEmpty($problems['profession']->message);
+    }
+
+    /**
+     * Test: get_incomplete_fields keeps returning a plain list of shortnames.
+     */
+    public function test_get_incomplete_fields_backward_compatible(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->create_profile_field('field_a');
+
+        $incomplete = local_forceprofile_get_incomplete_fields($user->id, ['field_a']);
+
+        $this->assertSame(['field_a'], $incomplete);
+    }
+
+    /**
+     * Test: signup validation rejects an invalid tax code on the self-registration form.
+     */
+    public function test_signup_validation_rejects_invalid_value(): void {
+        $this->resetAfterTest();
+
+        set_config('enabled', 1, 'local_forceprofile');
+        set_config('fields', 'CF', 'local_forceprofile');
+        set_config('validators', 'CF:codicefiscale', 'local_forceprofile');
+        set_config('signupvalidation', 1, 'local_forceprofile');
+
+        $errors = local_forceprofile_validate_extend_signup_form(['profile_field_CF' => 'ADRNLT79P41D969B']);
+
+        $this->assertArrayHasKey('profile_field_CF', $errors);
+        $this->assertNotEmpty($errors['profile_field_CF']);
+    }
+
+    /**
+     * Test: signup validation accepts a valid tax code.
+     */
+    public function test_signup_validation_accepts_valid_value(): void {
+        $this->resetAfterTest();
+
+        set_config('enabled', 1, 'local_forceprofile');
+        set_config('fields', 'CF', 'local_forceprofile');
+        set_config('validators', 'CF:codicefiscale', 'local_forceprofile');
+        set_config('signupvalidation', 1, 'local_forceprofile');
+
+        $errors = local_forceprofile_validate_extend_signup_form(['profile_field_CF' => 'bdrnlt79p41d969b']);
+
+        $this->assertSame([], $errors);
+    }
+
+    /**
+     * Test: signup validation requires configured fields that are present on the form.
+     */
+    public function test_signup_validation_requires_empty_field(): void {
+        $this->resetAfterTest();
+
+        set_config('enabled', 1, 'local_forceprofile');
+        set_config('fields', "CF\nprofession", 'local_forceprofile');
+        set_config('signupvalidation', 1, 'local_forceprofile');
+
+        $errors = local_forceprofile_validate_extend_signup_form([
+            'profile_field_CF' => '   ',
+            // 'profession' is not on the signup form at all.
+        ]);
+
+        $this->assertArrayHasKey('profile_field_CF', $errors);
+        $this->assertArrayNotHasKey('profile_field_profession', $errors);
+    }
+
+    /**
+     * Test: signup validation is skipped when the plugin or the setting is off.
+     */
+    public function test_signup_validation_can_be_disabled(): void {
+        $this->resetAfterTest();
+
+        set_config('fields', 'CF', 'local_forceprofile');
+        set_config('validators', 'CF:codicefiscale', 'local_forceprofile');
+
+        // Plugin disabled.
+        set_config('enabled', 0, 'local_forceprofile');
+        set_config('signupvalidation', 1, 'local_forceprofile');
+        $this->assertSame([], local_forceprofile_validate_extend_signup_form(['profile_field_CF' => 'nope']));
+
+        // Plugin enabled but signup validation off.
+        set_config('enabled', 1, 'local_forceprofile');
+        set_config('signupvalidation', 0, 'local_forceprofile');
+        $this->assertSame([], local_forceprofile_validate_extend_signup_form(['profile_field_CF' => 'nope']));
+    }
+
+    /**
+     * Test: signup validation also honours regex patterns.
+     */
+    public function test_signup_validation_applies_regex(): void {
+        $this->resetAfterTest();
+
+        set_config('enabled', 1, 'local_forceprofile');
+        set_config('fields', 'phone', 'local_forceprofile');
+        set_config('validation', 'phone:/^\+?[0-9]{8,15}$/', 'local_forceprofile');
+        set_config('signupvalidation', 1, 'local_forceprofile');
+
+        $this->assertArrayHasKey(
+            'profile_field_phone',
+            local_forceprofile_validate_extend_signup_form(['profile_field_phone' => 'abc'])
+        );
+        $this->assertSame(
+            [],
+            local_forceprofile_validate_extend_signup_form(['profile_field_phone' => '+390541123456'])
+        );
     }
 }

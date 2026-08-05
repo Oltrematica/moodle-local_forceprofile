@@ -38,6 +38,7 @@ if (!empty($fieldssetting)) {
     $shortnames = array_filter(array_map('trim', explode("\n", $fieldssetting)));
 }
 $patterns = local_forceprofile_get_validation_patterns();
+$validators = local_forceprofile_get_field_validators();
 
 $PAGE->set_url(new moodle_url('/local/forceprofile/status.php', ['page' => $page, 'perpage' => $perpage]));
 $PAGE->set_title(get_string('status_title', 'local_forceprofile'));
@@ -52,7 +53,7 @@ if (empty($shortnames)) {
 }
 
 // Summary counts.
-$counts = local_forceprofile_get_status_counts($shortnames, $patterns);
+$counts = local_forceprofile_get_status_counts($shortnames, $patterns, $validators);
 
 echo html_writer::start_div('local-forceprofile-summary mb-4');
 echo html_writer::start_div('d-flex gap-3 flex-wrap');
@@ -74,7 +75,7 @@ echo html_writer::end_div();
 echo html_writer::end_div();
 
 // Users table.
-$result = local_forceprofile_get_incomplete_users($shortnames, $patterns, $page, $perpage);
+$result = local_forceprofile_get_incomplete_users($shortnames, $patterns, $page, $perpage, $validators);
 
 if (empty($result['users'])) {
     echo $OUTPUT->notification(get_string('status_allusers_complete', 'local_forceprofile'), 'success');
@@ -97,9 +98,13 @@ foreach ($result['users'] as $user) {
     $profileurl = new moodle_url('/user/profile.php', ['id' => $user->id]);
     $editurl = new moodle_url('/user/editadvanced.php', ['id' => $user->id]);
 
+    // Empty fields and invalid values need different fixes, so they get different badges.
     $missingbadges = '';
-    foreach ($user->incompletefields as $field) {
-        $missingbadges .= html_writer::span($field, 'badge bg-warning text-dark me-1');
+    foreach ($user->fieldproblems as $problem) {
+        $class = $problem->reason === LOCAL_FORCEPROFILE_REASON_INVALID
+            ? 'badge bg-danger me-1'
+            : 'badge bg-warning text-dark me-1';
+        $missingbadges .= html_writer::span($problem->shortname, $class, ['title' => $problem->message]);
     }
 
     $lastaccess = $user->lastaccess ? userdate($user->lastaccess, get_string('strftimedatetimeshort', 'langconfig')) : '-';

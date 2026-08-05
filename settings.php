@@ -51,6 +51,27 @@ if ($hassiteconfig) {
         ''
     ));
 
+    // Named validators (shortname:validatorname per line).
+    $validatorlist = [];
+    foreach (\local_forceprofile\validator_manager::get_builtin_validators() as $validatorname => $validator) {
+        $validatorlist[] = html_writer::tag('code', $validatorname) . ' — ' . $validator->get_display_name();
+    }
+    $settings->add(new admin_setting_configtextarea(
+        'local_forceprofile/validators',
+        get_string('setting_validators', 'local_forceprofile'),
+        get_string('setting_validators_desc', 'local_forceprofile') .
+            html_writer::alist($validatorlist),
+        ''
+    ));
+
+    // Validate the configured fields on the self-registration form too.
+    $settings->add(new admin_setting_configcheckbox(
+        'local_forceprofile/signupvalidation',
+        get_string('setting_signupvalidation', 'local_forceprofile'),
+        get_string('setting_signupvalidation_desc', 'local_forceprofile'),
+        1
+    ));
+
     // Custom message.
     $settings->add(new admin_setting_configtextarea(
         'local_forceprofile/message',
