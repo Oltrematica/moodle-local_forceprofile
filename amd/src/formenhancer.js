@@ -16,57 +16,103 @@
 /**
  * Form enhancer for local_forceprofile.
  *
- * Adds required indicators and empty default options for configured fields
- * on the profile edit page.
+ * Flags the profile fields that are empty or hold an invalid value on the
+ * profile edit page, so the user can see at a glance what has to be fixed.
+ * Fields that are already correct are left untouched.
  *
  * @module     local_forceprofile/formenhancer
  * @copyright  2026 Oltrematica
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 define([], function() {
+
+    /**
+     * Escape a string for safe injection into an HTML attribute.
+     *
+     * @param {string} text - The raw text.
+     * @return {string} The escaped text.
+     */
+    var escapeAttribute = function(text) {
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    };
+
+    /**
+     * Add the warning icon next to a field label.
+     *
+     * @param {HTMLElement} element - The form element of the profile field.
+     * @param {string} message - The reason shown in the tooltip.
+     */
+    var markField = function(element, message) {
+        var fitem = element.closest('.fitem');
+        if (!fitem) {
+            return;
+        }
+
+        var addon = fitem.querySelector('.form-label-addon');
+        if (!addon || addon.querySelector('.local-forceprofile-flag')) {
+            return;
+        }
+
+        var title = escapeAttribute(message);
+        addon.insertAdjacentHTML('afterbegin',
+            '<div class="text-danger local-forceprofile-flag" title="' + title + '">' +
+            '<i class="icon fa fa-circle-exclamation text-danger fa-fw" ' +
+            'title="' + title + '" role="img" aria-label="' + title + '"></i></div>');
+    };
+
+    /**
+     * Prepend an empty option to a select that has no value yet.
+     *
+     * Without it the first option looks like a deliberate choice, and the user
+     * can save the form without ever touching the field.
+     *
+     * @param {HTMLSelectElement} element - The select element.
+     * @param {string} chooseLabel - Localised "Choose..." label.
+     */
+    var addEmptyOption = function(element, chooseLabel) {
+        for (var i = 0; i < element.options.length; i++) {
+            if (element.options[i].value === '') {
+                return;
+            }
+        }
+
+        var emptyOption = document.createElement('option');
+        emptyOption.value = '';
+        emptyOption.text = chooseLabel;
+        element.insertBefore(emptyOption, element.firstChild);
+        element.selectedIndex = 0;
+    };
+
     return {
         /**
          * Initialise the form enhancer.
          *
-         * @param {string[]} fieldShortnames - List of configured field shortnames.
-         * @param {string[]} incompleteFields - List of shortnames that are currently incomplete.
+         * @param {Object[]} problemFields - Fields needing attention.
+         * @param {string} problemFields[].shortname - Profile field shortname.
+         * @param {string} problemFields[].reason - Either "empty" or "invalid".
+         * @param {string} problemFields[].message - Localised explanation.
+         * @param {string} chooseLabel - Localised "Choose..." label for empty selects.
          */
-        init: function(fieldShortnames, incompleteFields) {
-            fieldShortnames.forEach(function(shortname) {
-                var el = document.getElementById('id_profile_field_' + shortname);
-                if (!el) {
+        init: function(problemFields, chooseLabel) {
+            if (!problemFields || !problemFields.length) {
+                return;
+            }
+
+            problemFields.forEach(function(field) {
+                var element = document.getElementById('id_profile_field_' + field.shortname);
+                if (!element) {
                     return;
                 }
 
-                // 1. Add required icon next to the field label.
-                var fitem = el.closest('.fitem');
-                if (fitem) {
-                    var addon = fitem.querySelector('.form-label-addon');
-                    if (addon && !addon.querySelector('.fa-circle-exclamation')) {
-                        var reqHtml = '<div class="text-danger" title="Compilazione obbligatoria">' +
-                            '<i class="icon fa fa-circle-exclamation text-danger fa-fw " ' +
-                            'title="Compilazione obbligatoria" role="img" ' +
-                            'aria-label="Compilazione obbligatoria"></i></div>';
-                        addon.insertAdjacentHTML('afterbegin', reqHtml);
-                    }
-                }
+                markField(element, field.message);
 
-                // 2. For SELECT fields that are incomplete, prepend an empty "Scegli..." option.
-                if (el.tagName === 'SELECT' && incompleteFields.indexOf(shortname) !== -1) {
-                    var hasEmpty = false;
-                    for (var i = 0; i < el.options.length; i++) {
-                        if (el.options[i].value === '') {
-                            hasEmpty = true;
-                            break;
-                        }
-                    }
-                    if (!hasEmpty) {
-                        var emptyOpt = document.createElement('option');
-                        emptyOpt.value = '';
-                        emptyOpt.text = 'Scegli...';
-                        el.insertBefore(emptyOpt, el.firstChild);
-                        el.selectedIndex = 0;
-                    }
+                if (element.tagName === 'SELECT' && field.reason === 'empty') {
+                    addEmptyOption(element, chooseLabel);
                 }
             });
         }
