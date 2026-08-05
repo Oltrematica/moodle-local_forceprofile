@@ -49,8 +49,8 @@ The plugin hooks into Moodle's `after_require_login` callback, which fires on **
 4. Skips allowed pages (profile edit, logout, password change)
 5. Checks session cache — if profile was already confirmed complete, no DB query is needed
 6. Queries the database for the configured custom profile fields
-7. Validates field values against optional regex patterns
-8. If any field is empty, missing, or invalid → redirects to the profile edit page with a warning
+7. Validates field values against optional regex patterns and named validators
+8. If any field is empty, missing, or invalid → redirects to the profile edit page with a warning naming each field and its problem
 9. Fires a `profile_blocked` event for logging
 
 When the user completes all fields, the plugin:
@@ -64,6 +64,9 @@ When the user completes all fields, the plugin:
 
 - **Any custom field** — configure which profile fields to enforce via shortnames
 - **Regex validation** — optional pattern validation per field (e.g., tax code format)
+- **Named validators** — checks a regex cannot express, such as the control character of an Italian tax code; extensible with your own classes
+- **Per-field messages** — the user is told which field is wrong and whether it is missing or invalid
+- **Self-registration validation** — configured fields are checked on the signup form, before the account is created
 - **Admin status page** — dashboard showing users with incomplete profiles
 - **Event logging** — `profile_blocked` and `profile_completed` events in Moodle logs
 - **Completion tracking** — stores when each user completed their profile
@@ -113,17 +116,49 @@ Navigate to **Site administration → Plugins → Local plugins → Force Profil
 | **Enable** | Activate or deactivate the plugin | Disabled |
 | **Fields to check** | Custom profile field shortnames, one per line | *(empty)* |
 | **Validation patterns** | Optional regex per field: `shortname:/pattern/` one per line | *(empty)* |
-| **Message** | Warning message shown when the user is redirected | *"You must complete your profile..."* |
+| **Field validators** | Optional named validator per field: `shortname:validatorname` one per line | *(empty)* |
+| **Validate on self-registration** | Also check the configured fields on the signup form | Enabled |
+| **Message** | Warning message shown when the user is redirected, followed by the list of fields to correct | *"You must complete your profile..."* |
 | **Redirect URL** | Local path where users are sent to complete their profile | `/user/edit.php` |
 
 ### Validation patterns example
 
 ```
-CF:/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/i
+CF:/^[A-Z]{6}[0-9LMNPQRSTUV]{2}[ABCDEHLMPRST][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]$/i
 phone:/^\+?[0-9]{8,15}$/
 ```
 
 Each line is `shortname:/regex/`. Fields without a pattern only need to be non-empty. Fields with a pattern must also match the regex.
+
+> The tax code pattern accepts **omocodia** substitutions. When two people would be assigned the same code, the Agenzia delle Entrate replaces digits with letters (`0`–`9` become `L M N P Q R S T U V`). A pattern allowing only digits in those positions rejects perfectly legitimate codes.
+
+### Field validators
+
+Some rules cannot be written as a regular expression. `ADRNLT79P41D969B` has a flawless tax code shape, yet it is invalid: its control character should be `C`. Validators cover that gap:
+
+```
+CF:codicefiscale
+```
+
+| Validator | What it checks |
+|-----------|----------------|
+| `codicefiscale` | Italian tax code: 16 character layout, valid month letter, omocodia substitutions, and the recomputed control character. The value is trimmed and uppercased first, so codes stored in lower case still validate. |
+
+A validator can be combined with a regex on the same field — the value then has to satisfy both. Unknown validator names are skipped with a `DEBUG_DEVELOPER` notice, so a typo never locks users out.
+
+To add your own check, write a class implementing `\local_forceprofile\validator\validator_interface` and reference it by its fully qualified name:
+
+```
+vat:\local_myplugin\validator\vatnumber
+```
+
+### Self-registration validation
+
+When self-registration is open, the configured fields are validated on the signup form itself, through Moodle's supported `validate_extend_signup_form` callback. Without it a user signs up with a malformed value and only finds out at the next page load, locked out of the site.
+
+Only fields published on the signup form are checked (*Display on signup page* in the profile field settings). Everything else is left alone.
+
+**Known limitation:** Moodle invokes this callback only on the web signup form. Accounts created through the mobile app or the `core_auth_signup_user` web service bypass it — core offers no hook there. Those users are still caught by the profile check at their first login.
 
 ### Recommended profile field settings
 
@@ -204,13 +239,21 @@ local/forceprofile/
 │   ├── install.xml                      Database schema
 │   └── upgrade.php                      Upgrade steps
 ├── classes/
+│   ├── validator_manager.php            Registry of named validators
+│   ├── validator/
+│   │   ├── validator_interface.php      Contract every validator implements
+│   │   └── codicefiscale.php            Italian tax code validator
 │   ├── event/
 │   │   ├── profile_blocked.php          Event: user blocked
 │   │   └── profile_completed.php        Event: user completed profile
 │   └── privacy/
 │       └── provider.php                 GDPR privacy provider
+├── amd/
+│   ├── src/formenhancer.js              Profile edit form enhancer
+│   └── build/formenhancer.min.js        Minified build
 ├── tests/
-│   └── lib_test.php                     PHPUnit tests
+│   ├── lib_test.php                     PHPUnit tests for lib.php
+│   └── validator/codicefiscale_test.php PHPUnit tests for the tax code validator
 └── lang/
     ├── en/local_forceprofile.php         English strings
     └── it/local_forceprofile.php         Italian strings
@@ -257,6 +300,10 @@ The plugin includes PHPUnit tests covering:
 - Regex validation (pass/fail)
 - Validation pattern parsing
 - Invalid regex handling
+- Named validator parsing, unknown validator handling
+- Tax code validation: real codes, wrong control character, lower case, whitespace, omocodia, truncated, empty
+- Empty vs. invalid distinction in the per-field messages
+- Self-registration validation (rejects, accepts, requires, can be disabled)
 - Completion timestamp recording
 - Event firing (profile_completed on first completion only)
 
@@ -270,6 +317,15 @@ Or directly:
 
 ```bash
 php vendor/bin/phpunit local/forceprofile/tests/lib_test.php
+php vendor/bin/phpunit local/forceprofile/tests/validator/codicefiscale_test.php
+```
+
+### Rebuilding the AMD module
+
+`amd/build/formenhancer.min.js` is generated from `amd/src/formenhancer.js`. From the Moodle root, after `npm install`:
+
+```bash
+npx grunt amd --root=local/forceprofile
 ```
 
 ---

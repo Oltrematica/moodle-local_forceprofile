@@ -371,15 +371,15 @@
     <div class="container">
         <div class="hero-version">
             Moodle Local Plugin
-            <span class="hero-version-tag">v2.1</span>
+            <span class="hero-version-tag">v2.2</span>
         </div>
         <h1>Force <span class="gradient">Profile</span> Completion</h1>
-        <p>Ensure every user completes their profile before accessing the platform. Regex validation, event logging, admin dashboard, form enhancement, and completion tracking.</p>
+        <p>Ensure every user completes their profile before accessing the platform. Regex and checksum validation, self-registration checks, per-field messages, event logging, admin dashboard, and completion tracking.</p>
         <div class="badges">
             <img src="https://img.shields.io/badge/Moodle-4.5%2B-orange?style=flat-square" alt="Moodle 4.5+">
             <img src="https://img.shields.io/badge/PHP-8.1%2B-blue?style=flat-square" alt="PHP 8.1+">
             <img src="https://img.shields.io/badge/License-GPLv3-green?style=flat-square" alt="GPL v3">
-            <img src="https://img.shields.io/badge/PHPUnit-17_tests-purple?style=flat-square" alt="17 tests">
+            <img src="https://img.shields.io/badge/PHPUnit-34_tests-purple?style=flat-square" alt="34 tests">
         </div>
         <div class="hero-actions">
             <a href="https://github.com/Oltrematica/moodle-local_forceprofile/releases" class="btn btn-primary">
@@ -399,11 +399,11 @@
     <div class="container">
         <div class="stats animate">
             <div class="stat">
-                <div class="stat-number accent">6</div>
+                <div class="stat-number accent">8</div>
                 <div class="stat-label">Major Features</div>
             </div>
             <div class="stat">
-                <div class="stat-number">17</div>
+                <div class="stat-number">34</div>
                 <div class="stat-label">Unit Tests</div>
             </div>
             <div class="stat">
@@ -428,6 +428,9 @@
         <div class="pill-grid">
             <div class="pill"><div class="pill-dot o"></div>Any custom profile field</div>
             <div class="pill"><div class="pill-dot o"></div>Regex validation per field</div>
+            <div class="pill"><div class="pill-dot p"></div>Named validators (checksum)</div>
+            <div class="pill"><div class="pill-dot p"></div>Self-registration validation</div>
+            <div class="pill"><div class="pill-dot g"></div>Per-field error messages</div>
             <div class="pill"><div class="pill-dot b"></div>Admin status dashboard</div>
             <div class="pill"><div class="pill-dot p"></div>Event logging</div>
             <div class="pill"><div class="pill-dot g"></div>Completion tracking</div>
@@ -556,7 +559,9 @@
                     <tr><td><strong>Enable</strong></td><td>Activate or deactivate the plugin</td><td>Disabled</td></tr>
                     <tr><td><strong>Fields to check</strong></td><td>Custom profile field shortnames, one per line</td><td><em>(empty)</em></td></tr>
                     <tr><td><strong>Validation patterns</strong></td><td>Optional regex per field: <code>shortname:/pattern/</code></td><td><em>(empty)</em></td></tr>
-                    <tr><td><strong>Message</strong></td><td>Warning message shown on redirect</td><td><em>"You must complete your profile&hellip;"</em></td></tr>
+                    <tr><td><strong>Field validators</strong> <span class="changelog-tag minor">v2.2</span></td><td>Optional named validator per field: <code>shortname:validatorname</code></td><td><em>(empty)</em></td></tr>
+                    <tr><td><strong>Validate on self-registration</strong> <span class="changelog-tag minor">v2.2</span></td><td>Also check the configured fields on the signup form</td><td>Enabled</td></tr>
+                    <tr><td><strong>Message</strong></td><td>Warning message shown on redirect, followed by the list of fields to correct</td><td><em>"You must complete your profile&hellip;"</em></td></tr>
                     <tr><td><strong>Redirect URL</strong></td><td>Local path for profile completion</td><td><code>/user/edit.php</code></td></tr>
                 </tbody>
             </table>
@@ -572,8 +577,8 @@
                 <div class="terminal-title">Validation patterns setting</div>
             </div>
             <div class="terminal-body">
-                <span class="terminal-output"><span class="code-comment"># Italian tax code (Codice Fiscale)</span></span><br>
-                <span class="terminal-cmd">CF:<span class="code-string">/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/i</span></span><br><br>
+                <span class="terminal-output"><span class="code-comment"># Italian tax code (Codice Fiscale), omocodia included</span></span><br>
+                <span class="terminal-cmd">CF:<span class="code-string">/^[A-Z]{6}[0-9LMNPQRSTUV]{2}[ABCDEHLMPRST][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]$/i</span></span><br><br>
                 <span class="terminal-output"><span class="code-comment"># International phone number</span></span><br>
                 <span class="terminal-cmd">phone:<span class="code-string">/^\+?[0-9]{8,15}$/</span></span><br><br>
                 <span class="terminal-output"><span class="code-comment"># Italian ZIP code</span></span><br>
@@ -581,6 +586,62 @@
             </div>
         </div>
         <p>Fields without a pattern only need to be non-empty. Fields with a pattern must match the regex. Invalid patterns are silently skipped.</p>
+        <div class="alert alert-orange">
+            <strong>Omocodia:</strong> when two people would receive the same tax code, the Agenzia delle Entrate replaces digits with letters (<code>0&ndash;9</code> become <code>L M N P Q R S T U V</code>). A pattern that only allows digits in those positions rejects perfectly legitimate codes &mdash; hence the character classes above.
+        </div>
+
+        <h3>Field Validators <span class="changelog-tag minor">v2.2</span></h3>
+        <p>Some rules cannot be expressed as a regular expression. A tax code such as <code>ADRNLT79P41D969B</code> has a flawless shape, yet it is invalid: its control character should be <code>C</code>. Validators cover exactly that gap. One assignment per line:</p>
+        <div class="terminal">
+            <div class="terminal-bar">
+                <div class="terminal-dot red"></div>
+                <div class="terminal-dot yellow"></div>
+                <div class="terminal-dot green"></div>
+                <div class="terminal-title">Field validators setting</div>
+            </div>
+            <div class="terminal-body">
+                <span class="terminal-output"><span class="code-comment"># Format and control character of the Italian tax code</span></span><br>
+                <span class="terminal-cmd">CF:<span class="code-string">codicefiscale</span></span>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Validator</th><th>What it checks</th></tr></thead>
+                <tbody>
+                    <tr>
+                        <td><code>codicefiscale</code></td>
+                        <td>Italian tax code: 16 character layout, valid month letter, omocodia substitutions, and the recomputed control character. The value is trimmed and uppercased first, so codes stored in lower case still validate.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>A validator can be combined with a regex on the same field &mdash; the value then has to satisfy both. Unknown validator names are skipped with a developer notice, so a typo never locks users out.</p>
+        <p>Sites needing their own rule can write a class implementing <code>\local_forceprofile\validator\validator_interface</code> and reference it by its fully qualified name, for example <code>vat:\local_myplugin\validator\vatnumber</code>. No change to this plugin is required.</p>
+
+        <h3>Per-field Messages <span class="changelog-tag minor">v2.2</span></h3>
+        <p>Until v2.1 a blocked user only saw a generic "complete your profile" warning &mdash; a dead end when the field <em>looked</em> filled in but held an invalid value. The warning now lists every field that needs attention and says whether it is missing or invalid:</p>
+        <div class="terminal">
+            <div class="terminal-bar">
+                <div class="terminal-dot red"></div>
+                <div class="terminal-dot yellow"></div>
+                <div class="terminal-dot green"></div>
+                <div class="terminal-title">Warning shown to the user</div>
+            </div>
+            <div class="terminal-body">
+                <span class="terminal-output">You must complete your profile before proceeding.<br><br>
+                Fields to correct:<br>
+                &bull; Codice fiscale: the value entered is not a valid Italian tax code &mdash; check the format and the final control character<br>
+                &bull; Profession: this required field has not been filled in</span>
+            </div>
+        </div>
+        <p>The same wording is reused as the tooltip on the profile edit form and in the admin status dashboard. All of it comes from the language packs &mdash; nothing is hardcoded.</p>
+
+        <h3>Self-registration Validation <span class="changelog-tag minor">v2.2</span></h3>
+        <p>When self-registration is open, the configured fields are validated on the signup form itself, through Moodle's supported <code>validate_extend_signup_form</code> callback. A user can no longer create an account with a malformed value and discover it only at the next page load, locked out of the site.</p>
+        <p>Only fields actually published on the signup form are checked (<em>Display on signup page</em> in the profile field settings); anything else is left alone. Turn the behaviour off with the <strong>Validate on self-registration</strong> setting.</p>
+        <div class="alert alert-orange">
+            <strong>Known limitation:</strong> Moodle runs this callback only on the web signup form. Accounts created through the mobile app or the <code>core_auth_signup_user</code> web service bypass it &mdash; core does not offer a hook there. Those users are still caught by the profile check at their first login.
+        </div>
     </div>
 </section>
 
@@ -622,13 +683,13 @@
         <div class="card-grid">
             <div class="card">
                 <span class="card-icon" style="color: var(--accent)">&#10071;</span>
-                <h4>Required Field Indicators</h4>
-                <p>A red exclamation icon is automatically injected next to each configured field label, making it immediately obvious which fields must be filled.</p>
+                <h4>Targeted Indicators</h4>
+                <p>A red exclamation icon is injected next to the fields that are actually empty or invalid &mdash; and only those. Its tooltip carries the same explanation as the warning, so the user reads why the value was rejected.</p>
             </div>
             <div class="card">
                 <span class="card-icon">&#128203;</span>
                 <h4>Smart Select Defaults</h4>
-                <p>Dropdown menus (<code>&lt;select&gt;</code>) for incomplete fields get an empty <em>"Scegli..."</em> option prepended, forcing users to make an explicit choice instead of accidentally submitting the first option.</p>
+                <p>Dropdown menus (<code>&lt;select&gt;</code>) that hold no value get an empty <em>"Choose&hellip;"</em> option prepended, forcing users to make an explicit choice instead of accidentally submitting the first option.</p>
             </div>
             <div class="card">
                 <span class="card-icon">&#9889;</span>
@@ -637,7 +698,7 @@
             </div>
         </div>
         <div class="alert alert-orange">
-            <strong>How it works:</strong> The <code>before_standard_html_head</code> callback loads an AMD module (<code>formenhancer.js</code>) that enhances the form client-side. It receives the list of configured fields and which ones are incomplete, then injects the indicators and empty options via DOM manipulation.
+            <strong>Fixed in v2.2:</strong> earlier versions marked <em>every</em> configured field, so correctly filled values still carried a red icon reading "compilation required". The callback now passes only the problematic fields, each with its own localised message, and the labels come from the language packs instead of being hardcoded in Italian.
         </div>
     </div>
 </section>
@@ -729,7 +790,7 @@
             <div class="card">
                 <span class="card-icon">&#127891;</span>
                 <h4>PHPUnit Tested</h4>
-                <p>17 tests covering fields, validation, events, completion, and edge cases.</p>
+                <p>34 tests covering fields, regex and checksum validation, signup, events, completion, and edge cases.</p>
             </div>
         </div>
 
@@ -765,13 +826,18 @@
             │&nbsp;&nbsp; ├── <span class="new">install.xml</span> <span class="desc">&mdash; Database schema</span><br>
             │&nbsp;&nbsp; └── <span class="new">upgrade.php</span> <span class="desc">&mdash; Upgrade steps</span><br>
             ├── classes/<br>
+            │&nbsp;&nbsp; ├── <span class="new">validator_manager.php</span> <span class="desc">&mdash; Validator registry</span><br>
+            │&nbsp;&nbsp; ├── <span class="new">validator/</span><br>
+            │&nbsp;&nbsp; │&nbsp;&nbsp; ├── <span class="new">validator_interface.php</span> <span class="desc">&mdash; Validator contract</span><br>
+            │&nbsp;&nbsp; │&nbsp;&nbsp; └── <span class="new">codicefiscale.php</span> <span class="desc">&mdash; Italian tax code validator</span><br>
             │&nbsp;&nbsp; ├── event/<br>
-            │&nbsp;&nbsp; │&nbsp;&nbsp; ├── <span class="new">profile_blocked.php</span> <span class="desc">&mdash; Blocked event</span><br>
-            │&nbsp;&nbsp; │&nbsp;&nbsp; └── <span class="new">profile_completed.php</span> <span class="desc">&mdash; Completed event</span><br>
+            │&nbsp;&nbsp; │&nbsp;&nbsp; ├── <span class="file">profile_blocked.php</span> <span class="desc">&mdash; Blocked event</span><br>
+            │&nbsp;&nbsp; │&nbsp;&nbsp; └── <span class="file">profile_completed.php</span> <span class="desc">&mdash; Completed event</span><br>
             │&nbsp;&nbsp; └── privacy/<br>
             │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └── <span class="file">provider.php</span> <span class="desc">&mdash; GDPR provider</span><br>
-            ├── <span class="new">tests/</span><br>
-            │&nbsp;&nbsp; └── <span class="new">lib_test.php</span> <span class="desc">&mdash; PHPUnit tests (17)</span><br>
+            ├── tests/<br>
+            │&nbsp;&nbsp; ├── <span class="file">lib_test.php</span> <span class="desc">&mdash; Library tests (30)</span><br>
+            │&nbsp;&nbsp; └── <span class="new">validator/codicefiscale_test.php</span> <span class="desc">&mdash; Validator tests (4)</span><br>
             └── lang/<br>
             &nbsp;&nbsp;&nbsp; ├── en/<span class="file">local_forceprofile.php</span><br>
             &nbsp;&nbsp;&nbsp; └── it/<span class="file">local_forceprofile.php</span>
@@ -786,10 +852,12 @@
                 <div class="terminal-title">PHPUnit</div>
             </div>
             <div class="terminal-body">
-                <span class="terminal-prompt">$</span> <span class="terminal-cmd">php vendor/bin/phpunit local/forceprofile/tests/lib_test.php</span><br>
-                <span class="terminal-output">PHPUnit 10.5<br>
-.................&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;17 / 17 (100%)<br><br>
-<span style="color: var(--green-2)">OK (17 tests, 34 assertions)</span></span>
+                <span class="terminal-output"><span class="code-comment"># The whole plugin suite</span></span><br>
+                <span class="terminal-prompt">$</span> <span class="terminal-cmd">php vendor/bin/phpunit --testsuite local_forceprofile_testsuite</span><br><br>
+                <span class="terminal-output"><span class="code-comment"># Library functions only</span></span><br>
+                <span class="terminal-prompt">$</span> <span class="terminal-cmd">php vendor/bin/phpunit local/forceprofile/tests/lib_test.php</span><br><br>
+                <span class="terminal-output"><span class="code-comment"># Tax code validator only</span></span><br>
+                <span class="terminal-prompt">$</span> <span class="terminal-cmd">php vendor/bin/phpunit local/forceprofile/tests/validator/codicefiscale_test.php</span>
             </div>
         </div>
     </div>
@@ -805,6 +873,27 @@
 
         <div class="changelog-entry">
             <div class="changelog-dot latest"></div>
+            <div class="changelog-header">
+                <span class="changelog-version">v2.2.0</span>
+                <span class="changelog-tag minor">Feature</span>
+                <span class="changelog-date">August 2026</span>
+            </div>
+            <div class="changelog-body">
+                <ul>
+                    <li><strong>Field validators</strong> &mdash; new <code>shortname:validatorname</code> setting for checks a regex cannot express; sites can register their own class implementing <code>validator_interface</code></li>
+                    <li><strong>Italian tax code validator</strong> (<code>codicefiscale</code>) &mdash; layout, month letter, omocodia substitutions and recomputed control character; values are trimmed and uppercased before checking</li>
+                    <li><strong>Per-field messages</strong> &mdash; the warning, the form tooltips and the status dashboard now name each field and distinguish "missing" from "invalid"</li>
+                    <li><strong>Self-registration validation</strong> &mdash; configured fields are checked on the signup form through the <code>validate_extend_signup_form</code> callback, so a bad value is refused before the account exists</li>
+                    <li><strong>Fixed:</strong> the form enhancer flagged every configured field, including the ones already filled in correctly</li>
+                    <li><strong>Fixed:</strong> the documented tax code regex rejected legitimate codes carrying omocodia substitutions</li>
+                    <li>Form enhancer labels moved to the language packs; values made only of spaces are now treated as empty</li>
+                    <li>Test suite grown to 34 tests, including the real-world tax code cases that motivated the release</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="changelog-entry">
+            <div class="changelog-dot"></div>
             <div class="changelog-header">
                 <span class="changelog-version">v2.1.0</span>
                 <span class="changelog-tag minor">Feature</span>
